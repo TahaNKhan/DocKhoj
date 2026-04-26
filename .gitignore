@@ -1,0 +1,11 @@
+.env
+node_modules
+dist
+documents
+qdrant_data
+qdrant_storage
+*.log
+.DS_Store
+.claude
+ollama_data
+coverage
