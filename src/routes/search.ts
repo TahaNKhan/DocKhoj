@@ -27,6 +27,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
           text: r.payload.chunk,
           fileName: r.payload.fileName,
           fileType: r.payload.fileType,
+          filePath: r.payload.filePath,
           chunkIndex: r.payload.chunkIndex,
           totalChunks: r.payload.totalChunks,
           score: r.score,
@@ -63,6 +64,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
       const contextChunks = results.map((r) => ({
         fileName: r.payload.fileName,
         chunk: r.payload.chunk,
+        filePath: r.payload.filePath,
         score: r.score ?? 0,
       }));
 

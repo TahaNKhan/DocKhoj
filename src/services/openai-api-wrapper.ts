@@ -15,12 +15,14 @@ export interface ChatMessage {
 
 export interface DocumentChunk {
   fileName: string;
+  filePath: string;
   chunk: string;
   score: number;
 }
 
 export interface Source {
   fileName: string;
+  filePath: string;
   text: string;
   score: number;
 }
@@ -98,6 +100,7 @@ Current Question: ${question}`;
     sources: contextChunks.map((c) => ({
       fileName: c.fileName,
       text: c.chunk.slice(0, 200) + (c.chunk.length > 200 ? '...' : ''),
+      filePath: c.filePath,
       score: c.score,
     })),
   };

@@ -6,11 +6,14 @@ cd /home/taha/.openclaw/workspace/doc-indexer
 echo "Stopping and removing containers..."
 docker compose down --remove-orphans
 
-echo "Removing old container if exists..."
+echo "Removing old containers..."
 docker rm -f dockhoj-app dockhoj-qdrant dockhoj-ollama 2>/dev/null || true
 
+echo "Removing old images..."
+docker rmi dockhoj-app doc-khoj-app doc-indexer-app 2>/dev/null || true
+
 echo "Building new image (includes public/ folder)..."
-docker build --no-cache -t dockhoj-app .
+docker compose build --no-cache
 
 echo "Starting containers..."
 docker compose up -d

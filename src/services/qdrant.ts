@@ -13,6 +13,7 @@ export interface DocumentChunk {
     chunk: string;
     fileName: string;
     fileType: string;
+    filePath: string;
     chunkIndex: number;
     totalChunks: number;
   };

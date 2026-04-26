@@ -30,7 +30,8 @@ export async function uploadRoutes(fastify: FastifyInstance) {
     const ext = path.extname(fileName).toLowerCase();
     log.info({ fileId, fileName, ext }, 'File received');
 
-    const filePath = path.join(UPLOAD_DIR, `${fileId}${ext}`);
+    const internalFileName = `${fileId}${ext}`;
+    const filePath = path.join(UPLOAD_DIR, internalFileName);
     log.info({ filePath }, 'Saving file');
     await pipeline(data.file, fsSync.createWriteStream(filePath));
     log.info({ fileName }, 'File saved');
@@ -42,7 +43,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       log.debug({ textLength: parsed.text.length, fileType: parsed.fileType }, 'File parsed');
     } catch (error) {
       log.error({ error, fileName }, 'Parse error');
-      await fs.unlink(filePath).catch(() => {});
+      await fs.unlink(filePath).catch(() => { });
       const message = error instanceof Error ? error.message : 'Failed to parse file';
       return reply.status(400).send({ error: message });
     }
@@ -66,16 +67,19 @@ export async function uploadRoutes(fastify: FastifyInstance) {
         const globalIndex = batchStart + i;
         try {
           const embedding = await embedText(chunk.text);
+          const payload = {
+            chunk: chunk.text,
+            fileName: fileName,
+            filePath: internalFileName,
+            fileType: parsed.fileType,
+            chunkIndex: globalIndex,
+            totalChunks: chunks.length,
+          };
+          log.info(payload, 'Created chunk with payload');
           qdrantChunks.push({
             id: uuidv4(),
             vector: embedding,
-            payload: {
-              chunk: chunk.text,
-              fileName: fileName,
-              fileType: parsed.fileType,
-              chunkIndex: globalIndex,
-              totalChunks: chunks.length,
-            },
+            payload,
           });
         } catch (error) {
           log.error({ error, globalIndex }, 'Failed to embed chunk');
@@ -107,7 +111,8 @@ export async function uploadRoutes(fastify: FastifyInstance) {
         const fileId = uuidv4();
         const fileName = part.filename;
         const ext = path.extname(fileName).toLowerCase();
-        const filePath = path.join(UPLOAD_DIR, `${fileId}${ext}`);
+        const internalFileName = `${fileId}${ext}`;
+        const filePath = path.join(UPLOAD_DIR, internalFileName);
 
         await pipeline(part.file, fsSync.createWriteStream(filePath));
 
@@ -128,16 +133,19 @@ export async function uploadRoutes(fastify: FastifyInstance) {
               const chunk = batchChunks[i];
               const globalIndex = batchStart + i;
               const embedding = await embedText(chunk.text);
+              const payload = {
+                chunk: chunk.text,
+                fileName: fileName,
+                filePath: internalFileName,
+                fileType: parsed.fileType,
+                chunkIndex: globalIndex,
+                totalChunks: chunks.length,
+              };
+              log.info(payload, 'Created chunk');
               qdrantChunks.push({
                 id: uuidv4(),
                 vector: embedding,
-                payload: {
-                  chunk: chunk.text,
-                  fileName: fileName,
-                  fileType: parsed.fileType,
-                  chunkIndex: globalIndex,
-                  totalChunks: chunks.length,
-                },
+                payload
               });
             }
 
@@ -164,10 +172,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/files', async (request, reply) => {
-    const qdrant = await import('../services/qdrant.js');
-    const info = await qdrant.getCollectionInfo();
-    return {
-      totalChunks: info.points_count,
-    };
+    return fsSync.readdirSync(UPLOAD_DIR)
+      .map(s => ({ filePath: s }));
   });
 }

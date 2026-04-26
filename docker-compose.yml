@@ -24,7 +24,7 @@ services:
     container_name: dockhoj-app
     image: doc-khoj-app:latest
     ports:
-      - "3001:3000"
+      - "3001:3001"
     volumes:
       - ./documents:/app/documents
     extra_hosts:
@@ -39,7 +39,7 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o}
-      - PORT=3000
+      - PORT=3001
       - CHUNK_SIZE=500
       - CHUNK_OVERLAP=50
     depends_on:

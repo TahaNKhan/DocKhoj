@@ -46,6 +46,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const contextChunks = results.map((r) => ({
         fileName: r.payload.fileName,
         chunk: r.payload.chunk,
+        filePath: r.payload.filePath,
         score: r.score ?? 0,
       }));
 

@@ -249,7 +249,7 @@
       if (data.sources && data.sources.length > 0) {
         html += '<div class="sources"><strong>Sources:</strong><ul>';
         for (const s of data.sources) {
-          html += `<li><strong>${s.fileName}</strong>: ${s.text.slice(0, 100)}...</li>`;
+          html += `<li><strong><a href="${API_BASE}/download/${s.filePath}">${s.fileName}</a></strong>: ${s.text.slice(0, 100)}...</li>`;
         }
         html += '</ul></div>';
       }
@@ -265,7 +265,7 @@
       if (data.sources && data.sources.length > 0) {
         html += '<div class="sources"><strong>Sources:</strong><ul>';
         for (const s of data.sources) {
-          html += `<li><strong>${s.fileName}</strong></li>`;
+          html += `<li><strong><a href="${API_BASE}/download/${s.filePath}">${s.fileName}</a></strong></li>`;
         }
         html += '</ul></div>';
       }

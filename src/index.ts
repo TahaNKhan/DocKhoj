@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { uploadRoutes } from './routes/upload.js';
 import { searchRoutes } from './routes/search.js';
 import { chatRoutes } from './routes/chat.js';
+import { downloadRoutes } from './routes/download.js';
 import { initCollection } from './services/qdrant.js';
 import { log } from './utils/logger.js';
 
@@ -57,6 +58,7 @@ export async function buildApp() {
   await fastify.register(uploadRoutes);
   await fastify.register(searchRoutes);
   await fastify.register(chatRoutes);
+  await fastify.register(downloadRoutes);
 
   fastify.get('/health', async () => ({ status: 'ok' }));
 
@@ -70,7 +72,7 @@ async function start() {
     log.info({ ollamaUrl: process.env.OLLAMA_BASE_URL }, 'Starting server');
 
     const fastify = await buildApp();
-    const port = parseInt(process.env.PORT || '3000');
+    const port = parseInt(process.env.PORT || '3001');
     await fastify.listen({ port, host: '0.0.0.0' });
     log.info({ port, url: `http://localhost:${port}` }, 'Server running');
   } catch (err) {

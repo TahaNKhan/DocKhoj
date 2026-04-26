@@ -33,6 +33,7 @@ export const log = createLogger('app');
 export const embedLog = log.child({ component: 'embed' });
 export const qdrantLog = log.child({ component: 'qdrant' });
 export const uploadLog = log.child({ component: 'upload' });
+export const donwloadLog = log.child({ component: 'download' });
 export const chatLog = log.child({ component: 'chat' });
 export const searchLog = log.child({ component: 'search' });
 export const llmLog = log.child({ component: 'llm' });
