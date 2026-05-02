@@ -1,11 +1,13 @@
 import OpenAI from 'openai';
 import { llmLog as log } from '../utils/logger.js';
 
+// creating a client instance for OpenAI API (through their official SDK)
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
   baseURL: process.env.OPENAI_BASE_URL,
 });
 
+// use LLM_MODEL from environment variables, otherwise dfault to "gpt-4o"
 const LLM_MODEL = process.env.LLM_MODEL || 'gpt-4o';
 
 export interface ChatMessage {
@@ -13,6 +15,8 @@ export interface ChatMessage {
   content: string;
 }
 
+// This part represents a chunk of a document used in the RAG pipeline.
+// More specifically, a data structure for a document chunk produced during RAG processing.
 export interface DocumentChunk {
   fileName: string;
   filePath: string;
@@ -20,13 +24,23 @@ export interface DocumentChunk {
   score: number;
 }
 
+// An intermediate output of the RAG pipeline: contains metadata + rates the retrieved source in the RAG system
 export interface Source {
+
+  // name of the document it came from
   fileName: string;
+
+  // where the document lives in
   filePath: string;
+
+  // the actual extracted chunk of content
   text: string;
+
+  // how relevant the chunk is to the user's query. Higher score = more relevant
   score: number;
 }
 
+// Output of the RAG pipeline (combines LLM answer and retrieved sources)
 export interface ChatResponse {
   answer: string;
   sources: Source[];
@@ -49,6 +63,7 @@ function buildHistoryText(history: ChatMessage[]): string {
     .join('\n');
 }
 
+// core function that actually calls the API
 async function chatCompletion(messages: { role: 'system' | 'user' | 'assistant'; content: string }[]): Promise<string> {
   const response = await openai.chat.completions.create({
     model: LLM_MODEL,
