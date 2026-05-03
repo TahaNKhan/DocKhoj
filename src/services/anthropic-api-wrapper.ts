@@ -10,25 +10,39 @@ const anthropic = new Anthropic({
 const LLM_MODEL = process.env.LLM_MODEL || 'claude-3-5-sonnet-latest';
 
 export interface ChatMessage {
-  role: 'user' | 'assistant';
+  role: 'system' | 'user' | 'assistant';
   content: string;
 }
+
 
 function stripThinkTags(text: string): string {
   return text.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
 }
 
-// core function that actually calls the API
 async function chatCompletion(
-  messages: { role: 'user' | 'assistant'; content: string }[],
-  systemPrompt?: string
+  messages: ChatMessage[]
 ): Promise<string> {
+
+  // extract system prompt
+  const systemPrompt =
+    messages.find((m) => m.role === 'system')?.content || '';
+
+  // remove system messages from conversation array
+  const chatMessages = messages.filter(
+      (m): m is { role: 'user' | 'assistant'; content: string } =>
+      m.role !== 'system'
+  );
+
   const response = await anthropic.messages.create({
     model: LLM_MODEL,
     max_tokens: 1000,
     temperature: 0.3,
-    system: systemPrompt ?? '',
-    messages,
+
+    // anthropic-specific
+    system: systemPrompt,
+
+    // anthropic-specific
+    messages: chatMessages,
   });
 
   const text = response.content
@@ -39,13 +53,25 @@ async function chatCompletion(
 }
 
 export async function createChatCompletion(
-  messages: { role: 'user' | 'assistant'; content: string }[]
+  messages: ChatMessage[]
 ): Promise<string> {
   try {
-    log.debug({ model: LLM_MODEL, messageCount: messages.length }, 'Anthropic chat completion');
+    log.debug(
+      {
+        model: LLM_MODEL,
+        messageCount: messages.length,
+      },
+      'Anthropic chat completion'
+    );
+
     return await chatCompletion(messages);
+
   } catch (err) {
+
     log.error({ err }, 'Anthropic API error');
-    throw new Error('Failed to generate chat completion');
+
+    throw new Error(
+      'Failed to generate chat completion'
+    );
   }
 }
