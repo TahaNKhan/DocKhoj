@@ -1,37 +1,62 @@
 import { FastifyInstance } from 'fastify';
 import { embedText } from '../services/embed.js';
-import { searchChunks } from '../services/qdrant.js';
+import { searchChunks, expandHits, type ExpandMode, type DocumentChunk } from '../services/qdrant.js';
 import { chatWithDocuments } from '../services/openai-api-wrapper.js';
 import { searchLog as log } from '../utils/logger.js';
 
+function parseExpandMode(value: string | undefined): ExpandMode {
+  if (value === 'siblings' || value === 'sections') return value;
+  return 'none';
+}
+
+function mapHitForResponse(hit: DocumentChunk) {
+  return {
+    id: hit.id,
+    text: hit.payload.chunk,
+    fileName: hit.payload.fileName,
+    fileType: hit.payload.fileType,
+    filePath: hit.payload.filePath,
+    chunkIndex: hit.payload.chunkIndex,
+    totalChunks: hit.payload.totalChunks,
+    headingPath: hit.payload.headingPath ?? [],
+    pageNumber: hit.payload.pageNumber,
+    blockKind: hit.payload.blockKind,
+    score: hit.score,
+  };
+}
+
 export async function searchRoutes(fastify: FastifyInstance) {
   fastify.get('/search', async (request, reply) => {
-    const { q, limit } = request.query as { q?: string; limit?: string };
+    const { q, limit, fileName, fileType, expand } = request.query as {
+      q?: string;
+      limit?: string;
+      fileName?: string;
+      fileType?: string;
+      expand?: string;
+    };
 
     if (!q) {
       return reply.status(400).send({ error: 'Query parameter "q" is required' });
     }
 
-    const limitNum = Math.min(parseInt(limit || '5'), 20);
+    const limitNum = Math.min(parseInt(limit || '5') || 5, 20);
+    const expandMode = parseExpandMode(expand);
 
     try {
-      log.debug({ queryLength: q.length, limit: limitNum }, 'Processing search');
+      log.debug({ queryLength: q.length, limit: limitNum, expandMode }, 'Processing search');
       const queryVector = await embedText(q);
-      const results = await searchChunks(queryVector, { limit: limitNum });
+      const baseResults = await searchChunks(queryVector, {
+        limit: limitNum,
+        fileName,
+        fileType,
+      });
+      const results = await expandHits(baseResults, { mode: expandMode });
 
       log.info({ resultCount: results.length }, 'Search complete');
       return {
         query: q,
-        results: results.map((r) => ({
-          id: r.id,
-          text: r.payload.chunk,
-          fileName: r.payload.fileName,
-          fileType: r.payload.fileType,
-          filePath: r.payload.filePath,
-          chunkIndex: r.payload.chunkIndex,
-          totalChunks: r.payload.totalChunks,
-          score: r.score,
-        })),
+        results: results.map(mapHitForResponse),
+        expandMode,
       };
     } catch (error) {
       log.error({ error }, 'Search error');
@@ -40,24 +65,37 @@ export async function searchRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get('/search/rag', async (request, reply) => {
-    const { q, limit } = request.query as { q?: string; limit?: string };
+    const { q, limit, fileName, fileType, expand } = request.query as {
+      q?: string;
+      limit?: string;
+      fileName?: string;
+      fileType?: string;
+      expand?: string;
+    };
 
     if (!q) {
       return reply.status(400).send({ error: 'Query parameter "q" is required' });
     }
 
-    const limitNum = Math.min(parseInt(limit || '5'), 20);
+    const limitNum = Math.min(parseInt(limit || '5') || 5, 20);
+    const expandMode = parseExpandMode(expand);
 
     try {
-      log.debug({ queryLength: q.length, limit: limitNum }, 'Processing RAG search');
+      log.debug({ queryLength: q.length, limit: limitNum, expandMode }, 'Processing RAG search');
       const queryVector = await embedText(q);
-      const results = await searchChunks(queryVector, { limit: limitNum });
+      const baseResults = await searchChunks(queryVector, {
+        limit: limitNum,
+        fileName,
+        fileType,
+      });
+      const results = await expandHits(baseResults, { mode: expandMode });
 
       if (results.length === 0) {
         log.info('No relevant documents found for RAG search');
         return {
           answer: 'No relevant documents found for your query.',
           sources: [],
+          expandMode,
         };
       }
 
@@ -69,11 +107,12 @@ export async function searchRoutes(fastify: FastifyInstance) {
       }));
 
       const response = await chatWithDocuments(q, contextChunks);
-      log.info({ answerLength: response.answer.length }, 'RAG search complete');
+      log.info({ answerLength: response.answer.length, expandMode }, 'RAG search complete');
 
       return {
         answer: response.answer,
         sources: response.sources,
+        expandMode,
       };
     } catch (error) {
       log.error({ error }, 'RAG search error');
