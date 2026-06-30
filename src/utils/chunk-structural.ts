@@ -280,9 +280,11 @@ export function chunkBlocksStructural(
 
   if (
     output.length > 1 &&
-    output[output.length - 1].tokenCount < minTokens &&
-    output[output.length - 1].blockKind !== 'heading' &&
-    output[output.length - 2].blockKind !== 'heading'
+    output[output.length - 1] &&
+    output[output.length - 1]!.tokenCount < minTokens &&
+    output[output.length - 1]!.blockKind !== 'heading' &&
+    output[output.length - 2] &&
+    output[output.length - 2]!.blockKind !== 'heading'
   ) {
     const last = output.pop();
     const prev = output[output.length - 1];

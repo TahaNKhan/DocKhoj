@@ -16,7 +16,10 @@ interface MammothMessage {
 function deriveHeadingLevel(styleName: string | undefined): number | undefined {
   if (!styleName) return undefined;
   const m = styleName.match(/heading\s*(\d)/i);
-  return m ? parseInt(m[1], 10) : undefined;
+  if (!m) return undefined;
+  const digit = m[1];
+  if (!digit) return undefined;
+  return parseInt(digit, 10);
 }
 
 export async function parseDocx(filePath: string): Promise<ParsedBlock[]> {
@@ -57,11 +60,14 @@ export async function parseDocx(filePath: string): Promise<ParsedBlock[]> {
       (m) => m.message && line.length > 0 && m.message.includes(line)
     );
 
-    const headingLevel = deriveHeadingLevel(styleMatch?.styleName);
+    const headingLevel = styleMatch ? deriveHeadingLevel(styleMatch.styleName) : undefined;
 
     if (headingLevel !== undefined) {
       flushParagraph(headingStack.map((h) => h.text));
-      while (headingStack.length > 0 && headingStack[headingStack.length - 1].depth >= headingLevel) {
+      while (
+        headingStack.length > 0 &&
+        headingStack[headingStack.length - 1]!.depth >= headingLevel
+      ) {
         headingStack.pop();
       }
       headingStack.push({ depth: headingLevel, text: line.trim() });

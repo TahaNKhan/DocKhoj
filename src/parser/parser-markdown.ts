@@ -67,17 +67,19 @@ export function parseMarkdown(source: string): ParsedBlock[] {
     let nodeDepth: number | undefined;
     if (kind === 'heading') {
       nodeDepth = node.type === 'heading' ? node.depth : 0;
+      const depthValue = nodeDepth ?? 0;
       while (
         headingStack.length > 0 &&
-        headingStack[headingStack.length - 1].depth >= (nodeDepth ?? 0)
+        headingStack[headingStack.length - 1]!.depth >= depthValue
       ) {
         headingStack.pop();
       }
-      headingStack.push({ depth: nodeDepth ?? 0, text: text.trim() });
+      headingStack.push({ depth: depthValue, text: text.trim() });
     }
 
+    const compareDepth = nodeDepth ?? depthOf(node) ?? 0;
     const headingPath = headingStack
-      .filter((h) => kind !== 'heading' || h.depth < (nodeDepth ?? depthOf(node) ?? 0))
+      .filter((h) => kind !== 'heading' || h.depth < compareDepth)
       .map((h) => h.text);
 
     const startOffset = cursor;
