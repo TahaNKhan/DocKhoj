@@ -1,222 +1,138 @@
 import { describe, it, expect } from 'vitest';
-import { chunkText, combineChunks } from '../../src/utils/chunk.js';
+import { chunkBlocks, chunkText, chunkMarkdown } from '../../src/utils/chunk.js';
+import { countTokens } from '../../src/utils/chunk-tokenizer.js';
 
-describe('chunkText', () => {
-  it('returns single chunk for text shorter than chunkSize', () => {
-    const text = 'Hello world';
-    const chunks = chunkText(text, 500, 50);
+const baseOptions = {
+  maxTokens: 50,
+  overlapTokens: 10,
+  minTokens: 5,
+  softMaxTokens: 75,
+  semanticSplit: false,
+};
+
+describe('chunkText (legacy shim)', () => {
+  it('returns empty array for empty text', async () => {
+    expect(await chunkText('', baseOptions)).toEqual([]);
+  });
+
+  it('returns empty array for whitespace-only text', async () => {
+    expect(await chunkText('   \n\n  ', baseOptions)).toEqual([]);
+  });
+
+  it('returns a single chunk for short text', async () => {
+    const chunks = await chunkText('hello world', baseOptions);
     expect(chunks).toHaveLength(1);
-    expect(chunks[0].text).toBe('Hello world');
+    expect(chunks[0].text).toBe('hello world');
     expect(chunks[0].index).toBe(0);
-    expect(chunks[0].startChar).toBe(0);
-    expect(chunks[0].endChar).toBe(11);
   });
 
-  it('returns empty array for empty text', () => {
-    const chunks = chunkText('', 500, 50);
-    expect(chunks).toHaveLength(0);
-  });
-
-  it('returns empty array for whitespace-only text', () => {
-    const chunks = chunkText('   ', 500, 50);
-    expect(chunks).toHaveLength(0);
-  });
-
-  it('splits text into chunks', () => {
-    const text = 'This is the first sentence. This is the second sentence. This is the third sentence.';
-    const chunks = chunkText(text, 30, 5);
-    // Just verify chunks are created and cover the text
+  it('splits long text into multiple chunks', async () => {
+    const longText = Array.from({ length: 30 }, (_, i) =>
+      `This is sentence number ${i}. It has enough words to fill tokens nicely.`
+    ).join(' ');
+    const chunks = await chunkText(longText, baseOptions);
     expect(chunks.length).toBeGreaterThan(1);
-    const allText = chunks.map(c => c.text).join('');
-    expect(allText).toContain('first');
-    expect(allText).toContain('second');
-    expect(allText).toContain('third');
-  });
-
-  it('splits at paragraph boundaries', () => {
-    const text = 'First paragraph here.\n\nSecond paragraph here.\n\nThird paragraph here.';
-    const chunks = chunkText(text, 30, 5);
-    const allText = chunks.map(c => c.text).join(' ');
-    expect(allText).toContain('First paragraph');
-    expect(allText).toContain('Second paragraph');
-    expect(allText).toContain('Third paragraph');
-  });
-
-  it('uses word boundary when no sentence/paragraph boundary available', () => {
-    const text = 'aaaaaaaaaa bbbbbbbbbb cccccccccc dddddddddd';
-    const chunks = chunkText(text, 20, 5);
-    expect(chunks.length).toBeGreaterThan(1);
-    chunks.forEach(chunk => {
-      expect(chunk.text[-1] || '').not.toMatch(/[a-z]/i);
-    });
-  });
-
-  it('respects chunkSize parameter', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    const chunks = chunkText(text, 5, 2);
-    chunks.forEach(chunk => {
-      expect(chunk.text.length).toBeLessThanOrEqual(5);
-    });
-  });
-
-  it('respects overlap parameter', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    const chunks = chunkText(text, 10, 5);
-    if (chunks.length > 1) {
-      const firstEnd = chunks[0].endChar;
-      const secondStart = chunks[1].startChar;
-      expect(firstEnd - secondStart).toBe(5);
+    for (const chunk of chunks) {
+      expect(chunk.tokenCount).toBeLessThanOrEqual(
+        baseOptions.maxTokens + baseOptions.overlapTokens
+      );
     }
   });
 
-  it('handles chunk size larger than text', () => {
-    const text = 'short';
-    const chunks = chunkText(text, 1000, 50);
+  it('respects minTokens by merging trailing tiny chunks', async () => {
+    const text = 'alpha bravo charlie delta echo foxtrot. tiny';
+    const chunks = await chunkText(text, { ...baseOptions, maxTokens: 15, minTokens: 5 });
     expect(chunks).toHaveLength(1);
-    expect(chunks[0].text).toBe('short');
+    expect(chunks[0].text).toContain('tiny');
   });
 
-  it('continues until end of text', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    const chunks = chunkText(text, 7, 3);
-    const lastChunk = chunks[chunks.length - 1];
-    expect(lastChunk.endChar).toBe(26);
-  });
-
-  it('sets correct indices', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    const chunks = chunkText(text, 5, 2);
+  it('assigns sequential indices', async () => {
+    const text = Array.from({ length: 50 }, (_, i) =>
+      `Paragraph number ${i} with sufficient text content to exceed the budget when max is small.`
+    ).join(' ');
+    const chunks = await chunkText(text, { ...baseOptions, maxTokens: 20 });
     chunks.forEach((chunk, i) => {
       expect(chunk.index).toBe(i);
     });
   });
+});
 
-  it('handles exact chunkSize boundary', () => {
-    const text = 'abcdefghij'.repeat(20);
-    const chunks = chunkText(text, 10, 2);
-    // With exact boundary and overlap, may produce more than 20 chunks
-    expect(chunks.length).toBeGreaterThanOrEqual(20);
-    expect(chunks[chunks.length - 1].endChar).toBe(200);
+describe('chunkBlocks', () => {
+  it('returns empty array for empty blocks', async () => {
+    expect(await chunkBlocks([], baseOptions)).toEqual([]);
   });
 
-  it('handles overlap equal to chunkSize', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    const chunks = chunkText(text, 10, 10);
-    expect(chunks.length).toBeGreaterThan(0);
+  it('packs small blocks into one chunk', async () => {
+    const blocks = [
+      { kind: 'paragraph', text: 'A.', headingPath: [], startOffset: 0, endOffset: 2 },
+      { kind: 'paragraph', text: 'B.', headingPath: [], startOffset: 3, endOffset: 5 },
+    ];
+    const chunks = await chunkBlocks(blocks, baseOptions);
+    expect(chunks).toHaveLength(1);
+    expect(chunks[0].text).toContain('A.');
+    expect(chunks[0].text).toContain('B.');
   });
 
-  it('handles zero overlap', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    const chunks = chunkText(text, 5, 0);
-    if (chunks.length > 1) {
-      expect(chunks[1].startChar).toBe(chunks[0].endChar);
-    }
+  it('attaches headingPath from input blocks', async () => {
+    const blocks = [
+      { kind: 'paragraph', text: 'Body text under a section.', headingPath: ['Section A'], startOffset: 0, endOffset: 25 },
+    ];
+    const chunks = await chunkBlocks(blocks, baseOptions);
+    expect(chunks[0].headingPath).toContain('Section A');
   });
 
-  it('trims whitespace from chunks', () => {
-    const text = '  hello world  ';
-    const chunks = chunkText(text, 100, 10);
-    expect(chunks[0].text).toBe('hello world');
+  it('emits heading blocks as their own chunks', async () => {
+    const blocks = [
+      { kind: 'heading', text: 'Title', headingPath: [], startOffset: 0, endOffset: 5, depth: 1 },
+      { kind: 'paragraph', text: 'body', headingPath: ['Title'], startOffset: 6, endOffset: 10 },
+    ];
+    const chunks = await chunkBlocks(blocks, baseOptions);
+    expect(chunks.some((c) => c.blockKind === 'heading' && c.text === 'Title')).toBe(true);
   });
 
-  it('handles single character repeated', () => {
-    const text = 'aaaaaaaaaa';
-    const chunks = chunkText(text, 5, 2);
-    expect(chunks.length).toBeGreaterThan(0);
-    chunks.forEach(c => expect(c.text.length).toBeLessThanOrEqual(5));
-  });
-
-  it('handles newlines within chunk', () => {
-    const text = 'line1\nline2\nline3\nline4\nline5';
-    const chunks = chunkText(text, 20, 5);
-    const allText = chunks.map(c => c.text).join('');
-    expect(allText).toContain('\n');
-  });
-
-  it('always advances by at least 1 character', () => {
-    const text = 'abcdefghijklmnopqrstuvwxyz';
-    const chunks = chunkText(text, 3, 2);
-    // Each chunk's start should be >= previous chunk's start (not less)
-    for (let i = 1; i < chunks.length; i++) {
-      expect(chunks[i].startChar).toBeGreaterThanOrEqual(chunks[i - 1].startChar);
-    }
-    // Last chunk should reach the end
-    expect(chunks[chunks.length - 1].endChar).toBe(26);
+  it('attaches pageNumber metadata when provided', async () => {
+    const blocks = [
+      { kind: 'paragraph', text: 'Content on page one.', headingPath: [], pageNumber: 1, startOffset: 0, endOffset: 20 },
+    ];
+    const chunks = await chunkBlocks(blocks, baseOptions);
+    expect(chunks[0].pageNumber).toBe(1);
   });
 });
 
-describe('combineChunks', () => {
-  it('combines chunks within maxLength', () => {
-    const chunks = [
-      { text: 'hello', index: 0, startChar: 0, endChar: 5 },
-      { text: 'world', index: 1, startChar: 6, endChar: 11 },
-    ];
-    const result = combineChunks(chunks, 20);
-    expect(result).toBe('hello world');
+describe('chunkMarkdown', () => {
+  it('chunks markdown while preserving heading structure', async () => {
+    const md = `# H1
+
+Some paragraph.
+
+## H2
+
+Another paragraph.
+
+\`\`\`typescript
+const x = 1;
+\`\`\`
+`;
+    const chunks = await chunkMarkdown(md, baseOptions);
+    expect(chunks.length).toBeGreaterThan(0);
+    const headingChunks = chunks.filter((c) => c.blockKind === 'heading');
+    expect(headingChunks.length).toBeGreaterThan(0);
+    expect(headingChunks.some((c) => c.text === 'H1')).toBe(true);
+    expect(headingChunks.some((c) => c.text === 'H2')).toBe(true);
   });
 
-  it('truncates when exceeding maxLength', () => {
-    const chunks = [
-      { text: 'hello', index: 0, startChar: 0, endChar: 5 },
-      { text: 'world', index: 1, startChar: 6, endChar: 11 },
-      { text: 'test', index: 2, startChar: 12, endChar: 16 },
-    ];
-    const result = combineChunks(chunks, 12);
-    expect(result).toBe('hello world');
-    expect(result.length).toBeLessThanOrEqual(12);
-  });
-
-  it('handles empty chunk array', () => {
-    const result = combineChunks([], 100);
-    expect(result).toBe('');
-  });
-
-  it('handles single chunk within maxLength', () => {
-    const chunks = [
-      { text: 'hello', index: 0, startChar: 0, endChar: 5 },
-    ];
-    const result = combineChunks(chunks, 100);
-    expect(result).toBe('hello');
-  });
-
-  it('handles maxLength of zero', () => {
-    const chunks = [
-      { text: 'hello', index: 0, startChar: 0, endChar: 5 },
-    ];
-    const result = combineChunks(chunks, 0);
-    expect(result).toBe('');
-  });
-
-  it('handles maxLength smaller than single chunk', () => {
-    const chunks = [
-      { text: 'hello world', index: 0, startChar: 0, endChar: 11 },
-    ];
-    const result = combineChunks(chunks, 5);
-    expect(result).toBe('');
-  });
-
-  it('exactly maxLength boundary', () => {
-    const chunks = [
-      { text: 'hi', index: 0, startChar: 0, endChar: 2 },
-    ];
-    const result = combineChunks(chunks, 2);
-    expect(result).toBe('hi');
-  });
-
-  it('uses correct maxLength default', () => {
-    const chunks = [
-      { text: 'a'.repeat(1000), index: 0, startChar: 0, endChar: 1000 },
-    ];
-    const result = combineChunks(chunks);
-    expect(result.length).toBeLessThanOrEqual(2000);
-  });
-
-  it('handles chunks with newlines', () => {
-    const chunks = [
-      { text: 'line1\n', index: 0, startChar: 0, endChar: 6 },
-      { text: 'line2', index: 1, startChar: 6, endChar: 11 },
-    ];
-    const result = combineChunks(chunks, 50);
-    expect(result).toContain('\n');
+  it('does not split fenced code blocks', async () => {
+    const md = `\`\`\`typescript
+function alpha() { return 1; }
+function beta() { return 2; }
+\`\`\`
+`;
+    const chunks = await chunkMarkdown(md, { ...baseOptions, maxTokens: 10, minTokens: 1 });
+    const codeChunks = chunks.filter((c) => c.blockKind === 'code');
+    for (const chunk of codeChunks) {
+      expect(chunk.text).toMatch(/^function \w+\(\)/);
+    }
   });
 });
+
+void countTokens;

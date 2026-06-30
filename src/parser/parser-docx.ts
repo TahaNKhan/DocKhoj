@@ -20,7 +20,8 @@ function deriveHeadingLevel(styleName: string | undefined): number | undefined {
 }
 
 export async function parseDocx(filePath: string): Promise<ParsedBlock[]> {
-  const result = await mammoth.extractRawText({ path: filePath });
+  const rawResult = await mammoth.extractRawText({ path: filePath });
+  const result = rawResult as unknown as { value: string; messages?: MammothMessage[] };
   const text = result.value;
 
   const blocks: ParsedBlock[] = [];
@@ -52,7 +53,7 @@ export async function parseDocx(filePath: string): Promise<ParsedBlock[]> {
       continue;
     }
 
-    const styleMatch = (result.messages as MammothMessage[] | undefined)?.find(
+    const styleMatch = (result.messages ?? []).find(
       (m) => m.message && line.length > 0 && m.message.includes(line)
     );
 

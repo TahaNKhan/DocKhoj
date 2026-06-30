@@ -1,11 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
-import type { ParsedBlock, ParsedDocument } from './parser-types.js';
-import { isSupportedExtension } from './parser-types.js';
-import { parseMarkdown } from './parser-markdown.js';
-import { parseText } from './parser-text.js';
-import { parseDocx } from './parser-docx.js';
-import { parsePdf } from './parser-pdf.js';
+import type { ParsedBlock, ParsedDocument } from '../parser/parser-types.js';
+import { isSupportedExtension } from '../parser/parser-types.js';
+import { parseMarkdown } from '../parser/parser-markdown.js';
+import { parseText } from '../parser/parser-text.js';
+import { parseDocx } from '../parser/parser-docx.js';
+import { parsePdf } from '../parser/parser-pdf.js';
 import { parserLog as log } from '../utils/logger.js';
 
 function blocksToText(blocks: ParsedBlock[]): string {
@@ -75,4 +75,4 @@ export async function parseFile(filePath: string): Promise<ParsedDocument> {
 }
 
 export { parseMarkdown, parseText, parseDocx, parsePdf };
-export type { ParsedBlock, ParsedDocument, BlockKind } from './parser-types.js';
+export type { ParsedBlock, ParsedDocument, BlockKind } from '../parser/parser-types.js';

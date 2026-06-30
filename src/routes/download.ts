@@ -1,7 +1,7 @@
 import { FastifyInstance } from 'fastify';
 import fs from 'fs';
 import path from 'path';
-import { donwloadLog as log } from '../utils/logger.js';
+import { downloadLog as log } from '../utils/logger.js';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);

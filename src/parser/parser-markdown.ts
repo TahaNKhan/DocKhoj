@@ -64,16 +64,20 @@ export function parseMarkdown(source: string): ParsedBlock[] {
       continue;
     }
 
+    let nodeDepth: number | undefined;
     if (kind === 'heading') {
-      const depth = node.type === 'heading' ? node.depth : 0;
-      while (headingStack.length > 0 && headingStack[headingStack.length - 1].depth >= depth) {
+      nodeDepth = node.type === 'heading' ? node.depth : 0;
+      while (
+        headingStack.length > 0 &&
+        headingStack[headingStack.length - 1].depth >= (nodeDepth ?? 0)
+      ) {
         headingStack.pop();
       }
-      headingStack.push({ depth, text: text.trim() });
+      headingStack.push({ depth: nodeDepth ?? 0, text: text.trim() });
     }
 
     const headingPath = headingStack
-      .filter((h) => kind !== 'heading' || h.depth < (depthOf(node) ?? depth))
+      .filter((h) => kind !== 'heading' || h.depth < (nodeDepth ?? depthOf(node) ?? 0))
       .map((h) => h.text);
 
     const startOffset = cursor;

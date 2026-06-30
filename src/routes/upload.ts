@@ -48,10 +48,10 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: message });
     }
 
-    const chunkSize = parseInt(process.env.CHUNK_SIZE || '500');
-    const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP || '50');
+    const chunkSize = parseInt(process.env.CHUNK_MAX_TOKENS || '512');
+    const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP_TOKENS || '64');
     log.debug({ chunkSize, chunkOverlap }, 'Chunking text');
-    const chunks = chunkText(parsed.text, chunkSize, chunkOverlap);
+    const chunks = await chunkText(parsed.text, { maxTokens: chunkSize, overlapTokens: chunkOverlap });
     log.info({ chunkCount: chunks.length }, 'Chunks created');
 
     let totalIndexed = 0;
@@ -118,9 +118,9 @@ export async function uploadRoutes(fastify: FastifyInstance) {
 
         try {
           const parsed = await parseFile(filePath);
-          const chunkSize = parseInt(process.env.CHUNK_SIZE || '500');
-          const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP || '50');
-          const chunks = chunkText(parsed.text, chunkSize, chunkOverlap);
+          const chunkSize = parseInt(process.env.CHUNK_MAX_TOKENS || '512');
+          const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP_TOKENS || '64');
+          const chunks = await chunkText(parsed.text, { maxTokens: chunkSize, overlapTokens: chunkOverlap });
 
           let totalIndexed = 0;
 
