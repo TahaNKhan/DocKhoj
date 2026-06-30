@@ -9,16 +9,19 @@ import { searchRoutes } from './routes/search.js';
 import { chatRoutes } from './routes/chat.js';
 import { downloadRoutes } from './routes/download.js';
 import { initCollection } from './services/qdrant.js';
+import { isOllamaAvailable } from './services/embed.js';
 import { log } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const SHUTDOWN_TIMEOUT_MS = 30_000;
+
 export async function buildApp() {
   const fastify = Fastify({
     logger: {
-      level: 'info',
-      transport: {
+      level: process.env.LOG_LEVEL || 'info',
+      transport: process.env.NODE_ENV === 'production' ? undefined : {
         target: 'pino-pretty',
         options: {
           translateTime: 'YYYY-MM-DD HH:mm:ss.SSS',
@@ -28,25 +31,27 @@ export async function buildApp() {
     },
   });
 
-  fastify.addHook('onRequest', async (request, reply) => {
-    log.info({
-      method: request.method,
-      url: request.url,
-    }, 'Incoming request');
+  fastify.addHook('onRequest', async (request) => {
+    if (request.url === '/health' || request.url.startsWith('/static')) return;
+    log.info({ method: request.method, url: request.url }, 'Incoming request');
   });
 
   fastify.addHook('onResponse', async (request, reply) => {
-    log.info({
-      method: request.method,
-      url: request.url,
-      statusCode: reply.statusCode,
-      responseTime: reply.elapsedTime,
-    }, 'Request completed');
+    if (request.url === '/health' || request.url.startsWith('/static')) return;
+    log.info(
+      {
+        method: request.method,
+        url: request.url,
+        statusCode: reply.statusCode,
+        responseTime: reply.elapsedTime,
+      },
+      'Request completed'
+    );
   });
 
   await fastify.register(cors, { origin: true });
   await fastify.register(multipart, {
-    limits: { fileSize: 50 * 1024 * 1024 },
+    limits: { fileSize: 50 * 1024 * 1024, files: 100 },
   });
 
   const publicPath = path.join(__dirname, '..', 'public');
@@ -60,14 +65,45 @@ export async function buildApp() {
   await fastify.register(chatRoutes);
   await fastify.register(downloadRoutes);
 
-  fastify.get('/health', async () => ({ status: 'ok' }));
+  fastify.get('/health', async () => {
+    const ollama = await isOllamaAvailable();
+    return { status: 'ok', ollama };
+  });
 
   return fastify;
+}
+
+let shuttingDown = false;
+
+async function shutdown(server: Awaited<ReturnType<typeof buildApp>>, signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info({ signal }, 'Shutdown signal received');
+
+  const timeout = setTimeout(() => {
+    log.error('Shutdown timed out, forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS);
+  timeout.unref();
+
+  try {
+    await server.close();
+    log.info('Server closed cleanly');
+    clearTimeout(timeout);
+    process.exit(0);
+  } catch (err) {
+    log.error({ err }, 'Error during shutdown');
+    clearTimeout(timeout);
+    process.exit(1);
+  }
 }
 
 async function start() {
   try {
     await initCollection();
+
+    const ollamaReady = await isOllamaAvailable();
+    log.info({ ollamaReady }, 'Ollama reachability');
 
     log.info({ ollamaUrl: process.env.OLLAMA_BASE_URL }, 'Starting server');
 
@@ -75,10 +111,18 @@ async function start() {
     const port = parseInt(process.env.PORT || '3001');
     await fastify.listen({ port, host: '0.0.0.0' });
     log.info({ port, url: `http://localhost:${port}` }, 'Server running');
+
+    process.on('SIGTERM', () => shutdown(fastify, 'SIGTERM'));
+    process.on('SIGINT', () => shutdown(fastify, 'SIGINT'));
   } catch (err) {
     log.error({ err }, 'Failed to start server');
     process.exit(1);
   }
 }
 
-start();
+const isMain = import.meta.url === `file://${process.argv[1]}`;
+if (isMain) {
+  start();
+}
+
+export { start };
