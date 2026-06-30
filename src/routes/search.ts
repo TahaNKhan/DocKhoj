@@ -17,7 +17,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
     try {
       log.debug({ queryLength: q.length, limit: limitNum }, 'Processing search');
       const queryVector = await embedText(q);
-      const results = await searchChunks(queryVector, limitNum);
+      const results = await searchChunks(queryVector, { limit: limitNum });
 
       log.info({ resultCount: results.length }, 'Search complete');
       return {
@@ -51,7 +51,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
     try {
       log.debug({ queryLength: q.length, limit: limitNum }, 'Processing RAG search');
       const queryVector = await embedText(q);
-      const results = await searchChunks(queryVector, limitNum);
+      const results = await searchChunks(queryVector, { limit: limitNum });
 
       if (results.length === 0) {
         log.info('No relevant documents found for RAG search');

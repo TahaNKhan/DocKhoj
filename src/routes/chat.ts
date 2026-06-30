@@ -32,7 +32,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       log.debug({ questionLength: q.length, sessionId: sid }, 'Processing chat request');
       const queryVector = await embedText(q);
-      const results = await searchChunks(queryVector, limitNum);
+      const results = await searchChunks(queryVector, { limit: limitNum });
 
       if (results.length === 0) {
         log.info({ sessionId: sid }, 'No relevant documents found');
