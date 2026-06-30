@@ -131,6 +131,7 @@
     </div>
   </div>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
 
   <script>
     const API_BASE = window.location.origin;
@@ -143,6 +144,13 @@
     const chatInput = document.getElementById('chatInput');
     const chatBtn = document.getElementById('chatBtn');
     const chatResults = document.getElementById('chatResults');
+
+    const UPLOAD_CONCURRENCY = 4;
+
+    function sanitizeMarkdown(markdown) {
+      const rendered = marked.parse(markdown || '');
+      return DOMPurify.sanitize(rendered);
+    }
 
     // Upload handling
     uploadArea.addEventListener('click', () => fileInput.click());
@@ -160,34 +168,59 @@
     });
     fileInput.addEventListener('change', () => handleFiles(fileInput.files));
 
+    async function uploadOne(file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      try {
+        const res = await fetch(`${API_BASE}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+        const data = await res.json();
+        return data.success ? { ok: true } : { ok: false, error: data.error };
+      } catch (e) {
+        return { ok: false, error: e.message || 'Network error' };
+      }
+    }
+
     async function handleFiles(files) {
-      if (!files.length) return;
-      uploadStatus.innerHTML = '<div class="loading">Uploading...</div>';
+      const fileArray = Array.from(files);
+      if (fileArray.length === 0) return;
+      uploadStatus.innerHTML = `<div class="loading">Uploading ${fileArray.length} file(s)…</div>`;
 
-      let successCount = 0;
-      let errorCount = 0;
+      const queue = [...fileArray];
+      const results = { ok: 0, failed: 0, errors: [] };
 
-      for (const file of files) {
-        const formData = new FormData();
-        formData.append('file', file);
-        try {
-          const res = await fetch(`${API_BASE}/upload`, {
-            method: 'POST',
-            body: formData,
-          });
-          const data = await res.json();
-          if (data.success) successCount++;
-          else errorCount++;
-        } catch (e) {
-          errorCount++;
+      async function worker() {
+        while (queue.length > 0) {
+          const file = queue.shift();
+          if (!file) break;
+          const result = await uploadOne(file);
+          if (result.ok) results.ok++;
+          else {
+            results.failed++;
+            results.errors.push({ fileName: file.name, error: result.error });
+          }
         }
       }
 
-      if (successCount > 0) {
-        uploadStatus.innerHTML = `<div class="status success">✓ Uploaded ${successCount} file(s)${errorCount > 0 ? `, ${errorCount} failed` : ''}</div>`;
+      const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, fileArray.length) }, worker);
+      await Promise.all(workers);
+
+      let html = '';
+      if (results.ok > 0) {
+        html += `<div class="status success">✓ Uploaded ${results.ok} file(s)${results.failed > 0 ? `, ${results.failed} failed` : ''}</div>`;
       } else {
-        uploadStatus.innerHTML = `<div class="status error">✗ Upload failed${errorCount > 0 ? `: ${errorCount} errors` : ''}</div>`;
+        html += `<div class="status error">✗ Upload failed${results.failed > 0 ? `: ${results.failed} errors` : ''}</div>`;
       }
+      if (results.errors.length > 0) {
+        html += '<div class="status error"><ul>';
+        for (const e of results.errors) {
+          html += `<li><strong>${e.fileName}</strong>: ${e.error}</li>`;
+        }
+        html += '</ul></div>';
+      }
+      uploadStatus.innerHTML = html;
     }
 
     // Search handling
@@ -245,11 +278,12 @@
         container.innerHTML = '<div class="status">No results found. Try uploading some documents first.</div>';
         return;
       }
-      let html = `<div class="answer"><div class="label">Answer:</div><div class="text">${marked.parse(data.answer)}</div></div>`;
+      const safeHtml = sanitizeMarkdown(data.answer);
+      let html = `<div class="answer"><div class="label">Answer:</div><div class="text">${safeHtml}</div></div>`;
       if (data.sources && data.sources.length > 0) {
         html += '<div class="sources"><strong>Sources:</strong><ul>';
         for (const s of data.sources) {
-          html += `<li><strong><a href="${API_BASE}/download/${s.filePath}">${s.fileName}</a></strong>: ${s.text.slice(0, 100)}...</li>`;
+          html += `<li><strong><a href="${API_BASE}/download/${s.filePath}">${s.fileName}</a></strong>: ${(s.text || '').slice(0, 100)}...</li>`;
         }
         html += '</ul></div>';
       }
@@ -261,7 +295,8 @@
         container.innerHTML = '<div class="status">No results found.</div>';
         return;
       }
-      let html = `<div class="answer"><div class="label">Answer:</div><div class="text">${marked.parse(data.answer)}</div></div>`;
+      const safeHtml = sanitizeMarkdown(data.answer);
+      let html = `<div class="answer"><div class="label">Answer:</div><div class="text">${safeHtml}</div></div>`;
       if (data.sources && data.sources.length > 0) {
         html += '<div class="sources"><strong>Sources:</strong><ul>';
         for (const s of data.sources) {
