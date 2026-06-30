@@ -6,7 +6,7 @@ import { downloadLog as log } from '../utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const FILES_DIR = path.join(__dirname, '..', '..', 'documents');
+const DEFAULT_FILES_DIR = path.join(__dirname, '..', '..', 'documents');
 
 interface IParams {
   filename: string;
@@ -32,17 +32,21 @@ function isPathSafe(resolved: string, root: string): boolean {
   return resolved.startsWith(resolvedRoot + path.sep) || resolved === resolvedRoot;
 }
 
-export async function downloadRoutes(fastify: FastifyInstance) {
-  await fs.promises.mkdir(FILES_DIR, { recursive: true });
+export async function downloadRoutes(
+  fastify: FastifyInstance,
+  options?: { filesDir?: string }
+) {
+  const filesDir = options?.filesDir ?? DEFAULT_FILES_DIR;
+  await fs.promises.mkdir(filesDir, { recursive: true });
 
   fastify.get<{ Params: IParams }>('/download/:filename', async (request, reply) => {
     const { filename } = request.params;
     log.debug({ filename }, 'Received download request');
 
     const safeName = path.basename(filename);
-    const resolved = path.resolve(FILES_DIR, safeName);
+    const resolved = path.resolve(filesDir, safeName);
 
-    if (!isPathSafe(resolved, FILES_DIR) || safeName !== filename) {
+    if (!isPathSafe(resolved, filesDir) || safeName !== filename) {
       log.warn({ filename, resolved }, 'Path traversal attempt blocked');
       return reply.callNotFound();
     }
