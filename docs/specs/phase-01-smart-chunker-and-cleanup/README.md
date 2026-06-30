@@ -1,8 +1,8 @@
 # Phase 01 — Smart Chunker & Cleanup
 
-**Status:** in-progress
+**Status:** done
 **Started:** 2026-06-29
-**Done:** _pending_
+**Done:** 2026-06-30
 
 ## Isolation
 - **Branch:** `main` (medium feature — 1–3 days; spec folder only, no dedicated worktree)
