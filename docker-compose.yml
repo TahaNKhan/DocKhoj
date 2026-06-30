@@ -12,10 +12,15 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: dockhoj-ollama
-    # No ports exposed — app container accesses via docker network at ollama:11434
     volumes:
       - ./ollama_data:/root/.ollama
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:11434/api/tags"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 30s
 
   app:
     build:
@@ -36,14 +41,21 @@ services:
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION=documents
       - VECTOR_SIZE=768
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
       - LLM_MODEL=${LLM_MODEL:-gpt-4o}
       - PORT=3001
-      - CHUNK_SIZE=500
-      - CHUNK_OVERLAP=50
+      - CHUNK_MAX_TOKENS=${CHUNK_MAX_TOKENS:-512}
+      - CHUNK_OVERLAP_TOKENS=${CHUNK_OVERLAP_TOKENS:-64}
+      - CHUNK_MIN_TOKENS=${CHUNK_MIN_TOKENS:-32}
+      - CHUNK_SEMANTIC_SPLIT=${CHUNK_SEMANTIC_SPLIT:-true}
+      - EMBEDDING_CONCURRENCY=${EMBEDDING_CONCURRENCY:-4}
+      - CHAT_HISTORY_MAX_TURNS=${CHAT_HISTORY_MAX_TURNS:-20}
+      - LOG_CHUNK_PREVIEW_CHARS=${LOG_CHUNK_PREVIEW_CHARS:-200}
     depends_on:
       ollama:
+        condition: service_healthy
+      qdrant:
         condition: service_started
     restart: unless-stopped
 

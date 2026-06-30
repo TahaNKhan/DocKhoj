@@ -2,24 +2,21 @@ FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+RUN apk add --no-cache wget
 
-# Install dependencies (including dev for build)
+COPY package*.json ./
 RUN npm install
 
-# Copy source
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
 
-# Build TypeScript
 RUN npm run build
-
-# Prune dev dependencies after build
 RUN npm prune --production
 
-# Production startup
 CMD ["node", "dist/index.js"]
 
-EXPOSE 3000
+EXPOSE 3001
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1
