@@ -1,7 +1,4 @@
 import pino from 'pino';
-import path from 'path';
-
-const __filename = import.meta.url.split('/').pop()?.replace('.ts', '') ?? 'unknown';
 
 export function createLogger(name: string) {
   return pino({
@@ -28,12 +25,18 @@ export function childLogger(parent: pino.Logger, suffix: string) {
   return parent.child({ component: suffix });
 }
 
-// Shared loggers per module - call once and reuse
+export function truncateForLog(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return text.slice(0, maxChars) + '…';
+}
+
 export const log = createLogger('app');
 export const embedLog = log.child({ component: 'embed' });
 export const qdrantLog = log.child({ component: 'qdrant' });
 export const uploadLog = log.child({ component: 'upload' });
-export const donwloadLog = log.child({ component: 'download' });
+export const downloadLog = log.child({ component: 'download' });
 export const chatLog = log.child({ component: 'chat' });
 export const searchLog = log.child({ component: 'search' });
 export const llmLog = log.child({ component: 'llm' });
+export const parserLog = log.child({ component: 'parser' });
+export const chunkLog = log.child({ component: 'chunk' });

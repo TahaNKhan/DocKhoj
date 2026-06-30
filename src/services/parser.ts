@@ -1,62 +1,78 @@
 import fs from 'fs/promises';
 import path from 'path';
-import pdfParse from 'pdf-parse';
-import mammoth from 'mammoth';
+import type { ParsedBlock, ParsedDocument } from './parser-types.js';
+import { isSupportedExtension } from './parser-types.js';
+import { parseMarkdown } from './parser-markdown.js';
+import { parseText } from './parser-text.js';
+import { parseDocx } from './parser-docx.js';
+import { parsePdf } from './parser-pdf.js';
+import { parserLog as log } from '../utils/logger.js';
 
-export interface ParsedDocument {
-  text: string;
-  fileName: string;
-  fileType: string;
+function blocksToText(blocks: ParsedBlock[]): string {
+  return blocks
+    .map((b) => b.text)
+    .filter((t) => t.length > 0)
+    .join('\n\n');
+}
+
+async function readSource(filePath: string): Promise<string> {
+  return fs.readFile(filePath, 'utf-8');
 }
 
 export async function parseFile(filePath: string): Promise<ParsedDocument> {
   const fileName = path.basename(filePath);
   const ext = path.extname(filePath).toLowerCase();
 
-  let text = '';
+  log.debug({ fileName, ext }, 'Parsing file');
+
+  let blocks: ParsedBlock[] = [];
+  let totalPages: number | undefined;
 
   switch (ext) {
-    case '.pdf':
-      text = await parsePdf(filePath);
+    case '.pdf': {
+      const result = await parsePdf(filePath);
+      blocks = result.blocks;
+      totalPages = result.totalPages;
       break;
-    case '.docx':
-      text = await parseDocx(filePath);
+    }
+    case '.docx': {
+      blocks = await parseDocx(filePath);
       break;
-    case '.txt':
+    }
     case '.md':
-    case '.markdown':
-      text = await fs.readFile(filePath, 'utf-8');
+    case '.markdown': {
+      const source = await readSource(filePath);
+      blocks = parseMarkdown(source);
       break;
-    default:
-      // Try as plain text
-      try {
-        text = await fs.readFile(filePath, 'utf-8');
-      } catch {
+    }
+    case '.txt': {
+      const source = await readSource(filePath);
+      blocks = parseText(source);
+      break;
+    }
+    default: {
+      if (!isSupportedExtension(ext)) {
         throw new Error(`Unsupported file type: ${ext}`);
       }
+      const source = await readSource(filePath);
+      blocks = parseText(source);
+      break;
+    }
   }
 
-  // Clean up the text
-  text = text.replace(/\s+/g, ' ').trim();
+  log.debug(
+    { fileName, blockCount: blocks.length, totalPages },
+    'File parsed'
+  );
 
   return {
-    text,
+    text: blocksToText(blocks),
+    blocks,
     fileName,
     fileType: ext,
+    totalPages,
   };
 }
 
-async function parsePdf(filePath: string): Promise<string> {
-  const data = await fs.readFile(filePath);
-  const parsed = await pdfParse(data);
-  return parsed.text;
-}
-
-async function parseDocx(filePath: string): Promise<string> {
-  const result = await mammoth.extractRawText({ path: filePath });
-  return result.value;
-}
-
-export function getSupportedExtensions(): string[] {
-  return ['.pdf', '.docx', '.txt', '.md', '.markdown'];
-}
+export { parseMarkdown, parseText, parseDocx, parsePdf };
+export type { ParsedBlock, ParsedDocument, BlockKind } from './parser-types.js';
