@@ -13,6 +13,58 @@ set -e
 # Dockerfile, edited docker-compose.yml, or just want to start over).
 # The full path tears everything down and rebuilds from scratch with
 # `--no-cache`.
+#
+# Persistence: state lives under $DOCKHOJ_HOME (default ~/.dockhoj).
+# `migrate_state` runs first on every invocation to lift the old
+# ./qdrant_data/ + in-container SQLite into the new layout so users
+# upgrading from a previous version don't lose their sessions.
+
+DOCKHOJ_HOME="${DOCKHOJ_HOME:-$HOME/.dockhoj}"
+export DOCKHOJ_HOME
+
+mkdir -p "$DOCKHOJ_HOME/db" "$DOCKHOJ_HOME/qdrant"
+
+# One-shot migration from the old layout. Each step is guarded so the
+# script is safe to re-run: if the source is empty or the target
+# already has data, the step is a no-op.
+migrate_state() {
+  # Qdrant: ./qdrant_data/* (old bind mount target) → ~/.dockhoj/qdrant/
+  # Copy only — never delete ./qdrant_data/. While the qdrant
+  # container is running its files are mmap-locked and `rm` from the
+  # host hits "Permission denied". Leaving the source in place is a
+  # harmless duplicate (~500 MB); the user can `rm -rf ./qdrant_data`
+  # after verifying the migration worked and the qdrant container is
+  # bound to the new path.
+  if [[ -d ./qdrant_data ]] \
+     && [[ -n "$(ls -A ./qdrant_data 2>/dev/null || true)" ]] \
+     && [[ -z "$(ls -A "$DOCKHOJ_HOME/qdrant" 2>/dev/null || true)" ]]; then
+    echo "Migrating Qdrant data: ./qdrant_data/ → $DOCKHOJ_HOME/qdrant/"
+    cp -a ./qdrant_data/. "$DOCKHOJ_HOME/qdrant/"
+    echo "  Old directory preserved at ./qdrant_data/. Run"
+    echo "  'rm -rf ./qdrant_data' after verifying the qdrant container"
+    echo "  is now bound to $DOCKHOJ_HOME/qdrant."
+  fi
+
+  # SQLite: docker cp from the running app container → ~/.dockhoj/db/.
+  # Only meaningful if the app container is up (hot path); --full
+  # tears it down so this step is skipped there. We checkpoint first
+  # so we copy a single coherent conversations.db without dangling
+  # WAL frames; better-sqlite3 in the image gives us that without
+  # needing the sqlite3 CLI.
+  if docker ps --format '{{.Names}}' | grep -q '^dockhoj-app$' \
+     && [[ -z "$(ls -A "$DOCKHOJ_HOME/db" 2>/dev/null || true)" ]]; then
+    echo "Migrating SQLite from running app container → $DOCKHOJ_HOME/db/"
+    docker exec dockhoj-app node -e '
+      const Database = require("better-sqlite3");
+      const db = new Database("/app/data/conversations.db");
+      db.pragma("wal_checkpoint(TRUNCATE)");
+      db.close();
+    ' 2>/dev/null || true
+    docker cp dockhoj-app:/app/data/conversations.db "$DOCKHOJ_HOME/db/" 2>/dev/null || true
+  fi
+}
+
+migrate_state
 
 mode="${1:-hot}"
 
@@ -35,7 +87,16 @@ elif [[ "$mode" == "hot" ]]; then
     docker compose up -d ollama qdrant
   fi
 
-  echo "Rebuilding app image (Ollama + Qdrant stay up)..."
+  # Force-recreate Qdrant so its bind mount picks up the new
+  # ${DOCKHOJ_HOME}/qdrant path. The container restart is cheap
+  # (a few seconds, no image rebuild) and avoids the situation where
+  # Qdrant is still reading from the old ./qdrant_data/ while new
+  # writes go to the new path — that would silently split the
+  # collection across two directories.
+  echo "Recreating Qdrant container (so it picks up the new bind mount)..."
+  docker compose up -d --no-deps --force-recreate qdrant
+
+  echo "Rebuilding app image (Ollama stays up)..."
   docker compose build app
 
   echo "Recreating app container..."

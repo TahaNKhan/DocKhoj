@@ -196,7 +196,7 @@ Any other non-`/api/*` path falls back to the SPA's `index.html`.
 | `QDRANT_COLLECTION` | `documents` | Qdrant collection name |
 | `VECTOR_SIZE` | `768` | Embedding vector dimension |
 | `PORT` | `3001` | Server port |
-| `SQLITE_PATH` | `/app/data/conversations.db` | SQLite file for conversations + messages (mounted from the `conversations_data` Docker volume) |
+| `SQLITE_PATH` | `/app/data/conversations.db` | SQLite file for conversations + messages. Inside the container the path is bind-mounted to `${DOCKHOJ_HOME}/db` (default `~/.dockhoj/db`) so it survives container rebuilds. |
 | `WEB_DIST` | `<repo>/web/dist` | Path to the built SPA. The server falls back to this directory when serving non-`/api/*` routes. |
 | `CHUNK_MAX_TOKENS` | `512` | Max tokens per chunk |
 | `CHUNK_OVERLAP_TOKENS` | `64` | Overlap tokens at chunk boundaries |
@@ -231,19 +231,25 @@ The Phase 02 cutover moved every JSON API under `/api/*`. If you're upgrading fr
 
 The old paths return 404 JSON (no redirects). The SPA itself runs under `/` (and serves `/chat` and `/upload`), so the UI URL is unchanged.
 
-Phase 02 also adds a `conversations_data` Docker volume mounted at `/app/data` for SQLite persistence — the previous in-memory `Map`-backed conversations no longer survive container restarts.
+Phase 02 also adds SQLite-backed conversations + messages — the previous in-memory `Map`-backed conversations no longer survive container restarts.
 
 ---
 
 ## Docker Compose
 
-The stack consists of three services (`app`, `ollama`, `qdrant`). Two named volumes persist data across `docker compose down`:
+The stack consists of three services (`app`, `ollama`, `qdrant`). Two bind-mounted host directories persist data across `docker compose down` and container rebuilds, both rooted under `$DOCKHOJ_HOME` (default `~/.dockhoj/`):
 
-```yaml
-volumes:
-  conversations_data:    # → /app/data  (SQLite)
-  ollama_data:           # → embedding model cache
-  qdrant_data:           # → vector store
+| Host path                              | Container mount       | Holds                |
+| -------------------------------------- | --------------------- | -------------------- |
+| `${DOCKHOJ_HOME}/db`                   | `/app/data` (app)     | SQLite (`conversations.db`, WAL, SHM) |
+| `${DOCKHOJ_HOME}/qdrant`               | `/qdrant/storage`     | Qdrant vector store |
+
+`./restart.sh` exports `DOCKHOJ_HOME` and creates the directories on first run; `migrate_state` lifts data from older layouts (`./qdrant_data/`, in-container `/app/data`) so existing users keep their sessions + embeddings. Ollama keeps the embedding model baked into its image — no host mount, no shadowing.
+
+Point `DOCKHOJ_HOME` elsewhere if you run multiple DocKhoj stacks on the same host, or want to back the data up on a separate disk:
+
+```bash
+DOCKHOJ_HOME=/path/to/backup ./restart.sh
 ```
 
 Bind-mount the source if you're iterating on the code:

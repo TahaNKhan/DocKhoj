@@ -258,6 +258,16 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Estimate:** S
 - **Status:** done
 
+## T48 — Persist Qdrant + SQLite to ~/.dockhoj
+
+- **Description:** SQLite (conversations + messages) lived inside the app container's writable layer and was wiped every time `./restart.sh` force-recreated the container. Qdrant was bind-mounted to `./qdrant_data/` (project root), which persisted across restarts but fragmented DocKhoj state across the repo. Move both under a single host directory: `${DOCKHOJ_HOME}` (default `~/.dockhoj/`) with `db/` for SQLite and `qdrant/` for Qdrant. `restart.sh` exports `DOCKHOJ_HOME`, creates the dirs on first run, and runs a one-shot `migrate_state` that lifts `./qdrant_data/*` → `~/.dockhoj/qdrant/` and docker-cps the SQLite from the running app container → `~/.dockhoj/db/` (with a `wal_checkpoint(TRUNCATE)` first so the copy is a single coherent file). The hot path now also force-recreates Qdrant so it picks up the new bind mount — otherwise a container restart that doesn't touch Qdrant would leave it reading the old path while new writes went to the new one. The migration copies but never deletes the old `./qdrant_data/` — while Qdrant is running its files are mmap-locked and a host `rm` hits "Permission denied"; the user can `rm -rf ./qdrant_data` manually once they confirm the new bind mount is in use. README updated to describe the layout and the `DOCKHOJ_HOME` override.
+- **Maps to FR:** NFR-1 (data persistence), NFR-5 (state survives restart)
+- **Maps to design:** §Build & run
+- **Acceptance:** Run `./restart.sh` twice — sessions listed by `/api/sessions` are identical before and after. Run `./restart.sh --full` — sessions + Qdrant vectors still present. `docker inspect dockhoj-qdrant` shows the bind mount under `/home/$USER/.dockhoj/qdrant`. `docker inspect dockhoj-app` shows `/app/data` mounted from `/home/$USER/.dockhoj/db`. `DOCKHOJ_HOME=/tmp/foo ./restart.sh` boots cleanly with state isolated to `/tmp/foo/`.
+- **Depends on:** —
+- **Estimate:** S
+- **Status:** done
+
 ---
 
 # Phase 01 — Smart Chunker & Cleanup

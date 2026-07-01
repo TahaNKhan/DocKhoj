@@ -6,7 +6,12 @@ services:
       - "6333:6333"
       - "6334:6334"
     volumes:
-      - ./qdrant_data:/qdrant/storage
+      # Bind-mount Qdrant's storage into ~/.dockhoj/qdrant/ so the
+      # vector index survives `./restart.sh --full`, container
+      # rebuilds, and reboots. ${DOCKHOJ_HOME} is exported by
+      # restart.sh (default: $HOME/.dockhoj) so users on multi-user
+      # hosts can point it elsewhere.
+      - ${DOCKHOJ_HOME}/qdrant:/qdrant/storage
     restart: unless-stopped
 
   ollama:
@@ -46,6 +51,12 @@ services:
       - "3001:3001"
     volumes:
       - ./documents:/app/documents
+      # Persist SQLite (conversations + messages) into ~/.dockhoj/db/.
+      # Without this, the DB lives inside the container's writable
+      # layer and is wiped every time the app container is recreated
+      # (which `./restart.sh` does on every run). The path matches the
+      # app's default SQLITE_PATH (/app/data/conversations.db).
+      - ${DOCKHOJ_HOME}/db:/app/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
@@ -72,6 +83,3 @@ services:
       qdrant:
         condition: service_started
     restart: unless-stopped
-
-volumes:
-  qdrant_data:
