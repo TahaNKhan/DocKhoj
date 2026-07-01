@@ -116,7 +116,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Unit tests with stubbed OpenAI client assert: (a) stream yields chunks in order, abort signal propagates; (b) `generateConversationTitle` returns a 5–8 word string with quotes/punctuation stripped, falls back gracefully on 4xx/5xx; (c) `fallbackTitle` clamps to 60 chars with ellipsis.
 - **Depends on:** —
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T32 — Stream orchestrator
 

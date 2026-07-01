@@ -105,3 +105,32 @@ Current Question: ${question}`;
     })),
   };
 }
+
+/**
+ * Streaming chat completion. Yields `{ text }` chunks from
+ * openai.chat.completions.create({ stream: true }, { signal }). The
+ * caller is responsible for forwarding each chunk to the SSE
+ * response and assembling the full answer.
+ *
+ * Abort signal is passed through so a client disconnect can
+ * cancel the in-flight request (FR-21).
+ */
+export async function* streamChatCompletionRaw(
+  messages: { role: 'system' | 'user' | 'assistant'; content: string }[],
+  signal: AbortSignal
+): AsyncGenerator<{ text: string }> {
+  const stream = await openai.chat.completions.create(
+    {
+      model: LLM_MODEL,
+      messages,
+      temperature: 0.3,
+      max_tokens: 1000,
+      stream: true,
+    },
+    { signal }
+  );
+  for await (const chunk of stream) {
+    const text = chunk.choices?.[0]?.delta?.content ?? '';
+    if (text) yield { text };
+  }
+}

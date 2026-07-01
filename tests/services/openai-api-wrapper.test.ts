@@ -19,7 +19,11 @@ vi.mock('openai', () => ({
   },
 }));
 
-import { createChatCompletion, chatWithDocuments } from '../../src/services/openai-api-wrapper.js';
+import {
+  createChatCompletion,
+  chatWithDocuments,
+  streamChatCompletionRaw,
+} from '../../src/services/openai-api-wrapper.js';
 
 describe('createChatCompletion', () => {
   beforeEach(() => mockCreate.mockReset());
@@ -74,5 +78,49 @@ describe('chatWithDocuments', () => {
     expect(response.sources).toHaveLength(1);
     expect(response.sources[0].fileName).toBe('notes.md');
     expect(response.sources[0].text.endsWith('...') || response.sources[0].text.length <= 200).toBe(true);
+  });
+});
+
+describe('streamChatCompletionRaw', () => {
+  beforeEach(() => mockCreate.mockReset());
+
+  it('yields text chunks in order', async () => {
+    // Async iterator that yields the same shape OpenAI returns for
+    // stream=true. The wrapper extracts choices[0].delta.content.
+    async function* fakeStream() {
+      yield { choices: [{ delta: { content: 'Hel' } }] };
+      yield { choices: [{ delta: { content: 'lo' } }] };
+      yield { choices: [{ delta: { content: ' world' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(fakeStream());
+
+    const ac = new AbortController();
+    const collected: string[] = [];
+    for await (const ev of streamChatCompletionRaw(
+      [{ role: 'user', content: 'hi' }],
+      ac.signal
+    )) {
+      collected.push(ev.text);
+    }
+    expect(collected.join('')).toBe('Hello world');
+    // sanity: stream:true was passed
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ stream: true }),
+      expect.objectContaining({ signal: ac.signal })
+    );
+  });
+
+  it('skips chunks with empty delta content', async () => {
+    async function* fakeStream() {
+      yield { choices: [{ delta: { content: 'a' } }] };
+      yield { choices: [{ delta: { content: '' } }] };
+      yield { choices: [{ delta: {} }] };
+      yield { choices: [{ delta: { content: 'b' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(fakeStream());
+    const ac = new AbortController();
+    const collected: string[] = [];
+    for await (const ev of streamChatCompletionRaw([], ac.signal)) collected.push(ev.text);
+    expect(collected.join('')).toBe('ab');
   });
 });
