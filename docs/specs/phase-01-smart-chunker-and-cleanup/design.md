@@ -493,9 +493,10 @@ EXPOSE 3001
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "--spider", "-q", "http://localhost:11434/api/tags"]
+  # The ollama/ollama image has no curl/wget, so probe via the CLI.
+  test: ["CMD-SHELL", "ollama list >/dev/null 2>&1"]
   interval: 5s
-  timeout: 3s
+  timeout: 5s
   retries: 20
   start_period: 30s
 ```
