@@ -238,6 +238,26 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Estimate:** S
 - **Status:** done
 
+## T46 — Chat layout refactor + composer pinned to bottom
+
+- **Description:** The chat column didn't fill the viewport (composer floated ~⅓ down the page on first paint) and the layout buried the sidebar-vs-chat split inside one route component. Refactor: lift `<Sidebar>` to `App.tsx` so it sits next to `<TopBar>` in the page chrome; replace the `.chat-shell` CSS Grid (with its implicit-row auto-sizing trap) with pure flexbox — `<main class="layout">` is the flex row containing Sidebar + Chat; `<section class="chat">` is the flex column containing toolbar / stream / composer. Sidebar gets `flex: 0 0 300px`. Composer gets `flex-shrink: 0` so a long stream can't squeeze it. Sessions state, the streaming turn, and all session handlers move from `Chat.tsx` up to `App.tsx`; `Chat.tsx` becomes a presenter taking `activeSession, loading, messages, pending, onSubmit` as props. `App.tsx` uses `useLocation` to render Sidebar only on `/chat` (upload stays single-column). Root cause of the empty bottom space: body had only one flex child, Preact's `#app` mount point, which defaulted to `display: block` and sized to its content — so TopBar + `<main>` (both inside `#app`) couldn't grow past the content height. `#app` is now `flex: 1; display: flex; flex-direction: column` so it claims the body, and the flex children distribute the remaining height correctly.
+- **Maps to FR:** FR-45 (responsive layout — broken: composer floating mid-screen)
+- **Maps to design:** §Module layout, §Frontend design
+- **Acceptance:** At 1440 × 900, the chat column fills the viewport (sidebar 300 px on the left, chat filling the rest, composer anchored to the bottom). At 420 × 900 the sidebar is hidden and the chat fills the screen. The `/upload` page stays single-column with no sidebar. The composer never gets squeezed by a long stream. All 200 vitest tests still pass.
+- **Depends on:** T25 (sidebar/composer static scaffold)
+- **Estimate:** M
+- **Status:** done
+
+## T47 — restart.sh hot-iteration loop
+
+- **Description:** `restart.sh` tore down and rebuilt all three containers (including the slow Ollama image that bakes in the embedding model on build) on every run, which made the project's "pre-commit" loop take minutes for a 5-line CSS change. Split into two modes: `hot` (default) rebuilds + recreates only the `app` container, leaves Ollama + Qdrant running, and brings them up lazily if they're not yet running; `--full` does the clean teardown + `--no-cache` rebuild + all-services-up for fresh clones or compose changes.
+- **Maps to FR:** NFR-7 (developer iteration loop)
+- **Maps to design:** §Build & run
+- **Acceptance:** After a CSS change, `./restart.sh` finishes in seconds (only app container recreated, Ollama + Qdrant untouched). `./restart.sh --full` still produces a clean fresh-clone boot. Hot path skips the Ollama image build when it's already cached.
+- **Depends on:** —
+- **Estimate:** S
+- **Status:** done
+
 ---
 
 # Phase 01 — Smart Chunker & Cleanup

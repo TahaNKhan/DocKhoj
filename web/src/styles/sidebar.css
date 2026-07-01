@@ -1,6 +1,11 @@
 /* Sidebar — sessions list (with seed data in T25) and pinned section. */
 
 .side {
+  /* T46: pinned to the left of .layout at a fixed 300 px. flex-shrink: 0
+     stops the chat column from squeezing the sidebar when the viewport
+     gets tight. The mobile breakpoint below hides it entirely. */
+  width: 300px;
+  flex: 0 0 300px;
   border-right: 1px solid var(--border);
   padding: 22px 18px;
   display: flex;
@@ -105,32 +110,39 @@
   color: var(--cream);
 }
 
-/* Chat shell + main area + toolbar + stream — all live here because
-   they form one layout block (sidebar | area) at the chat page level.
-   Upload page lives outside this grid. */
+/* Page layout — <main class="layout">. Lives at the top level
+   alongside TopBar; the App conditionally adds .layout when the
+   chat route is active. Sidebar + chat sit in a flex row; on the
+   upload route the Sidebar isn't rendered, so <main> stays a plain
+   flex column. */
 
-.chat-shell {
-  /* T45: fill the parent (<main>) instead of computing viewport height.
-     body now owns viewport pinning, so chat-shell just takes 100% of
-     its parent and `.stream` (with overflow-y: auto) scrolls inside. */
+.layout {
   position: relative;
   z-index: 2;
-  display: grid;
-  grid-template-columns: 300px 1fr;
-  height: 100%;
-  max-width: 1500px;
-  margin: 0 auto;
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  min-width: 0;
   min-height: 0;
 }
 
-.area {
+/* Chat column — vertical stack of toolbar / stream / composer. Pure
+   flexbox (no grid), so flex: 1 resolves predictably: .stream claims
+   the leftover height between the fixed-size toolbar and composer.
+   min-height: 0 is required so .stream (overflow-y: auto) can
+   actually shrink inside this flex item. */
+
+.chat {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   position: relative;
 }
 
 .toolbar {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -192,7 +204,8 @@
 }
 
 .stream {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 36px 24px 16px;
   display: flex;
@@ -203,10 +216,6 @@
 }
 
 @media (max-width: 960px) {
-  .chat-shell {
-    grid-template-columns: 1fr;
-  }
-
   .side {
     display: none;
   }

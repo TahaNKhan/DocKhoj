@@ -2,6 +2,11 @@
    dropped per FR-37 / FR-38 (decorative-only in the mockup). */
 
 .composer {
+  /* T46: pin to the bottom of `.chat`. flex-shrink: 0 stops the stream
+     (flex: 1) from squeezing the composer when its content gets long —
+     the composer should always render at its natural height and stay
+     anchored to the bottom of the viewport. */
+  flex-shrink: 0;
   border-top: 1px solid var(--border);
   padding: 18px 24px 22px;
   background: linear-gradient(180deg, transparent, rgba(10, 9, 8, 0.7));
