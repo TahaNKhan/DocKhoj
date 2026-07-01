@@ -55,7 +55,11 @@ export async function generateConversationTitle(
     signal ? { signal } : undefined
   );
   const raw = response.choices?.[0]?.message?.content?.trim() ?? '';
-  const cleaned = raw
+  // Strip any chain-of-thought the model emitted before the title,
+  // then dedupe lines (models sometimes wrap the title in
+  // quotes on a separate line).
+  const noThink = raw.replace(/<\/?think>/g, '').trim();
+  const cleaned = noThink
     .replace(/^["'`]+|["'`]+$/g, '')
     .replace(/[.!?]+$/, '')
     .slice(0, 80)

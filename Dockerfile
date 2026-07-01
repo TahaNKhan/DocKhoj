@@ -10,6 +10,7 @@ RUN npm install
 COPY tsconfig.json ./
 COPY src ./src
 COPY public ./public
+COPY scripts ./scripts
 
 RUN npm run build
 RUN npm prune --production

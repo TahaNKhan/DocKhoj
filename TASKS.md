@@ -126,7 +126,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Stub-friendly tests: with a fake OpenAI stream + fake Qdrant + fake embed, the generator yields the expected event sequence.
 - **Depends on:** T31
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T33 — SSE route + client SSE parser + post-`done` title event
 
@@ -136,7 +136,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Route test asserts event sequence including `event: title` after `event: done`. Disconnect simulation: `reply.raw.close()` mid-stream causes `AbortController.abort()` to be called AND the post-`done` title write is silently dropped (no error). Client SSE parser test handles single + multiple + malformed frames including the new `title` event. Sync `/api/chat` test asserts `title` is non-null in response.
 - **Depends on:** T32, T30, T31
 - **Estimate:** L
-- **Status:** todo
+- **Status:** done
 
 ## T34 — /api/status route + TopBar wiring
 

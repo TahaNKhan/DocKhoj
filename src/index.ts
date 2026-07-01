@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { uploadRoutes } from './routes/upload.js';
 import { searchRoutes } from './routes/search.js';
 import { chatRoutes } from './routes/chat.js';
+import { chatStreamRoutes } from './routes/chat-stream.js';
 import { downloadRoutes } from './routes/download.js';
 import { sessionRoutes } from './routes/api-sessions.js';
 import { healthRoutes } from './routes/api-health.js';
@@ -64,15 +65,21 @@ export async function buildApp() {
     prefix: '/',
   });
 
+  // Decorate the Fastify instance with the SQLite DB singleton BEFORE
+  // any route plugin that depends on it (chat, chat-stream,
+  // sessions) registers. Order matters — encapsulated children only
+  // see decorations made on the parent before they're registered.
+  fastify.decorate('db', openDb());
+
   await fastify.register(uploadRoutes);
   await fastify.register(searchRoutes);
   await fastify.register(chatRoutes);
+  await fastify.register(chatStreamRoutes);
   await fastify.register(downloadRoutes);
 
   // SQLite-backed sessions routes. The sessionId regex (^[A-Za-z0-9_-]{1,64}$)
   // is enforced both here and at the ConversationStore layer for defense
   // in depth.
-  fastify.decorate('db', openDb());
   await fastify.register(sessionRoutes);
 
   // /api/health (moved from /health per FR-1 / FR-52).
