@@ -1,6 +1,9 @@
 /* TopBar — brand mark + nav pills + status indicator. */
 
 .topbar {
+  /* T45: in the new body flex column, the topbar must NOT shrink so
+     <main> can claim the remaining viewport for its scroll container. */
+  flex: 0 0 auto;
   position: relative;
   z-index: 5;
   display: flex;

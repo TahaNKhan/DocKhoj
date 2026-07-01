@@ -110,13 +110,17 @@
    Upload page lives outside this grid. */
 
 .chat-shell {
+  /* T45: fill the parent (<main>) instead of computing viewport height.
+     body now owns viewport pinning, so chat-shell just takes 100% of
+     its parent and `.stream` (with overflow-y: auto) scrolls inside. */
   position: relative;
   z-index: 2;
   display: grid;
   grid-template-columns: 300px 1fr;
-  height: calc(100vh - 65px);
+  height: 100%;
   max-width: 1500px;
   margin: 0 auto;
+  min-height: 0;
 }
 
 .area {

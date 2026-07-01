@@ -3,11 +3,16 @@
  * tokens/animations as the chat surface. */
 
 .upload-shell {
+  /* T45: this is the upload page's own scroll container so the body
+     stays pinned to the viewport (see base.css body). */
   position: relative;
   z-index: 2;
   max-width: 1080px;
+  width: 100%;
   margin: 0 auto;
   padding: 56px var(--pad) 96px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .page-head {

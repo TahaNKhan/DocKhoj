@@ -236,7 +236,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** On `/chat`, scrolling inside the conversation bubbles does NOT scroll the page; the page itself stays fixed. On `/upload`, scrolling inside the page scrolls within the upload-shell (not the body). Both pages work at 360 × 800 px and 1440 × 900 px without horizontal or vertical scroll bleed.
 - **Depends on:** T33
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ---
 

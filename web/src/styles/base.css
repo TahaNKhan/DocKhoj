@@ -20,9 +20,26 @@ body {
 }
 
 body {
-  min-height: 100vh;
-  overflow-x: hidden;
+  /* T45: pin the body to the viewport (use dvh for mobile chrome).
+     The page itself never scrolls — chat's `.stream` and upload's
+     `.upload-shell` each own their own scrolling inside <main>. */
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   line-height: 1.5;
+}
+
+/* <main> fills the remaining vertical space below the fixed topbar
+   and is itself non-scrolling (children handle scroll). min-height: 0
+   is required so the inner overflow containers (`overflow-y: auto`)
+   can shrink correctly inside this flex item. */
+main {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 a {
