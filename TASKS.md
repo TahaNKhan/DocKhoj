@@ -58,7 +58,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Fresh container boots, `_migrations` table is created, `001` is recorded; second boot is a no-op; `:memory:` test DB applies the migration cleanly.
 - **Depends on:** T22
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T27 — ConversationStore
 
