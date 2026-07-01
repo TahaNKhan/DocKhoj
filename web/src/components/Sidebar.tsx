@@ -9,15 +9,17 @@ import type { Conversation } from '../services/sessions';
 interface Props {
   sessions: Conversation[];
   activeId: string | null;
+  open: boolean;
+  onClose: () => void;
   onSelect: (id: string) => void;
   onCreate: () => void;
   onRename?: (id: string, currentTitle: string) => void;
   onDelete?: (id: string) => void;
 }
 
-export function Sidebar({ sessions, activeId, onSelect, onCreate, onRename, onDelete }: Props) {
+export function Sidebar({ sessions, activeId, open, onClose, onSelect, onCreate, onRename, onDelete }: Props) {
   return (
-    <aside class="side">
+    <aside id="sidebar" class={`side${open ? ' open' : ''}`}>
       <div>
         <h4>
           Sessions{' '}

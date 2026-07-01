@@ -117,8 +117,12 @@
    flex column. */
 
 .layout {
-  position: relative;
-  z-index: 2;
+  /* No z-index on purpose. <main> sitting below the fixed topbar
+     doesn't need its own stacking context, AND giving it one would
+     trap the mobile sidebar overlay (z-index 50 inside <main>)
+     beneath TopBar (root z-index 5). Keeping .layout z-index-free
+     lets the sidebar's position: fixed + z-index: 50 stack at root
+     level, on top of the topbar. */
   flex: 1;
   display: flex;
   flex-direction: row;
@@ -215,9 +219,54 @@
   background: radial-gradient(80% 50% at 50% 0%, rgba(244, 236, 225, 0.02), transparent 60%);
 }
 
+/* Side scrim — only painted when the mobile sidebar is open. Sits
+   behind the sidebar (z-index 49 vs the sidebar's 50), covers the rest
+   of the viewport, and fades in/out. Display: none on desktop so it
+   never intercepts clicks there. */
+
+.side-scrim {
+  display: none;
+}
+
 @media (max-width: 960px) {
+  /* On mobile, the sidebar becomes a fixed overlay that slides in
+     from the left. It's still rendered into <main> but pulled out
+     of flow via position: fixed, so the chat column fills the
+     screen behind it. .side.open toggles the slide-in. */
   .side {
-    display: none;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 300px;
+    flex: 0 0 auto;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: 4px 0 32px rgba(0, 0, 0, 0.5);
+    border-right: 1px solid var(--border);
+  }
+
+  .side.open {
+    transform: translateX(0);
+  }
+
+  .side-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 49;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.22s ease;
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .side-scrim.open {
+    opacity: 1;
+    pointer-events: auto;
   }
 
   .toolbar {

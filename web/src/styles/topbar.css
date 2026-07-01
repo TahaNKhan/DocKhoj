@@ -1,4 +1,4 @@
-/* TopBar — brand mark + nav pills + status indicator. */
+/* TopBar — brand mark + burger (mobile) + nav pills + status indicator. */
 
 .topbar {
   /* T45: in the new body flex column, the topbar must NOT shrink so
@@ -15,6 +15,51 @@
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   background: rgba(10, 9, 8, 0.7);
+}
+
+/* Burger button — hidden on desktop, visible ≤ 960 px to open the
+   sidebar overlay. Three stacked <span class="bar"> lines animate
+   into an X when the sidebar is open (.burger.open below). */
+.burger {
+  display: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 0;
+  cursor: pointer;
+  transition: 0.15s;
+  flex-shrink: 0;
+}
+
+.burger:hover {
+  border-color: var(--muted);
+  background: var(--surface-2);
+}
+
+.burger .bar {
+  display: block;
+  width: 18px;
+  height: 1.5px;
+  background: var(--cream);
+  border-radius: 1px;
+  transition: transform 0.2s, opacity 0.2s;
+}
+
+/* Open-state morph: top bar slides down, middle fades, bottom slides up. */
+.burger.open .bar:nth-child(1) {
+  transform: translateY(5.5px) rotate(45deg);
+}
+.burger.open .bar:nth-child(2) {
+  opacity: 0;
+}
+.burger.open .bar:nth-child(3) {
+  transform: translateY(-5.5px) rotate(-45deg);
 }
 
 .brand {
@@ -111,6 +156,12 @@
 }
 
 @media (max-width: 960px) {
+  .burger {
+    display: flex;
+    order: -1;
+    margin-right: 12px;
+  }
+
   .topnav,
   .topmeta .label {
     display: none;

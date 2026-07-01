@@ -1,16 +1,35 @@
 import { Link, useLocation } from 'wouter-preact';
 
-// TopBar — brand mark + nav pills + status indicator. The status pill
-// is currently a fixed string ("online · 2,847 chunks"); T34+T35 wire
-// it to /api/status for live chunk count and Ollama reachability.
+// TopBar — brand mark + burger (mobile) + nav pills + status indicator.
+// The status pill is currently a fixed string ("online · 2,847 chunks");
+// T34+T35 wire it to /api/status for live chunk count and Ollama
+// reachability.
 
-export function TopBar() {
+interface Props {
+  sidebarOpen: boolean;
+  onToggleSidebar: () => void;
+}
+
+export function TopBar({ sidebarOpen, onToggleSidebar }: Props) {
   const [path] = useLocation();
   const isChat = path === '/' || path.startsWith('/chat');
   const isUpload = path.startsWith('/upload');
 
   return (
     <header class="topbar">
+      <button
+        type="button"
+        class={`burger${sidebarOpen ? ' open' : ''}`}
+        onClick={onToggleSidebar}
+        aria-label={sidebarOpen ? 'Close sessions' : 'Open sessions'}
+        aria-expanded={sidebarOpen}
+        aria-controls="sidebar"
+      >
+        <span class="bar" />
+        <span class="bar" />
+        <span class="bar" />
+      </button>
+
       <div class="brand">
         <span class="brand-mark" />
         <span class="brand-name">

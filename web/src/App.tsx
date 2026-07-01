@@ -38,6 +38,29 @@ export function App() {
   const [pending, setPending] = useState<PendingTurn | null>(null);
   const streamRef = useRef<{ close: () => void } | null>(null);
 
+  // T46 follow-up: mobile sidebar (burger menu). The sidebar slides in
+  // as a fixed overlay below 960 px (see sidebar.css). On desktop the
+  // state is irrelevant — the sidebar is always visible — but we still
+  // keep it in state so the same component instance works on both.
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Close the sidebar whenever the route changes (user clicked Chat /
+  // Upload, picked a session, etc.). Without this the overlay would
+  // linger over the new page.
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [location]);
+
+  // Escape closes the sidebar when it's open.
+  useEffect(() => {
+    if (!sidebarOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarOpen]);
+
   // On mount: load the session list, then restore the active
   // session from localStorage (or pick the most-recent, creating a
   // new one if none exist).
@@ -86,6 +109,9 @@ export function App() {
     setMessages([]);
     const msgs = await listMessages(id);
     setMessages(msgs);
+    // Close the mobile sidebar after picking a session — same effect as
+    // the route-change close, but explicit so it feels instant.
+    setSidebarOpen(false);
   }
 
   async function handleCreate() {
@@ -198,18 +224,33 @@ export function App() {
       <div class="grain" aria-hidden="true" />
       <div class="grid-overlay" aria-hidden="true" />
 
-      <TopBar />
+      <TopBar
+        sidebarOpen={sidebarOpen}
+        onToggleSidebar={() => setSidebarOpen((v) => !v)}
+      />
 
       <main class={isChatRoute ? 'layout' : ''}>
         {isChatRoute && (
-          <Sidebar
-            sessions={sessions}
-            activeId={activeId}
-            onSelect={selectSession}
-            onCreate={handleCreate}
-            onRename={handleRename}
-            onDelete={handleDelete}
-          />
+          <>
+            <Sidebar
+              sessions={sessions}
+              activeId={activeId}
+              open={sidebarOpen}
+              onClose={() => setSidebarOpen(false)}
+              onSelect={selectSession}
+              onCreate={handleCreate}
+              onRename={handleRename}
+              onDelete={handleDelete}
+            />
+            {/* Scrim sits inside <main> on mobile (the sidebar is a
+                fixed-position overlay there). On desktop it's hidden
+                via display: none in sidebar.css. */}
+            <div
+              class={`side-scrim${sidebarOpen ? ' open' : ''}`}
+              onClick={() => setSidebarOpen(false)}
+              aria-hidden="true"
+            />
+          </>
         )}
 
         <Switch>
