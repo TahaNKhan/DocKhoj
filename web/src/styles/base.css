@@ -1,0 +1,44 @@
+/* Base + reset — applied to all pages.
+ *
+ * Source: mockups/dockhoj-chat-v2.html (root body styles). Keep this
+ * conservative — selectors here target the whole tree, not components.
+ * Component-specific styles live alongside their component (T25+).
+ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--f-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+  line-height: 1.5;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--cream);
+}

@@ -38,7 +38,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** `tokens.css` is the single source of design tokens; running a stub page produces identical colors/typography/motion to the mockup.
 - **Depends on:** T23
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ## T25 — Build static UI scaffold
 

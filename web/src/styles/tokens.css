@@ -1,0 +1,56 @@
+/* Design tokens — single source of truth for the SPA.
+ *
+ * Extracted from mockups/dockhoj-chat-v2.html (commit `3d2ace7`).
+ * The mockup's :root block defines color, type, spacing, radius,
+ * and shadow primitives. Both /chat and /upload consume these —
+ * any color/typography/spacing change in the design contract is a
+ * one-line edit here.
+ *
+ * Keep this file free of any selectors or @keyframes. tokens.css is
+ * variables only; composability lives in base.css and animations.css.
+ */
+
+:root {
+  /* Backgrounds */
+  --bg: #0a0908;
+  --surface: #161311;
+  --surface-2: #1c1814;
+
+  /* Paper tones (cream foreground accent) */
+  --cream: #f4ece1;
+  --paper: #ece4d4;
+
+  /* Foreground */
+  --fg: #f5f1ea;
+  --fg-soft: #d8d0c4;
+  --muted: #8a8278;
+
+  /* Borders */
+  --border: #2a2522;
+  --border-soft: #221e1a;
+
+  /* Accents */
+  --accent: #e25540;
+  --accent-2: #f08a6e;
+  --accent-soft: rgba(226, 85, 64, 0.14);
+  --warm-glow: rgba(226, 85, 64, 0.22);
+
+  /* Geometry */
+  --r: 8px;
+  --r-lg: 14px;
+  --r-xl: 22px;
+
+  /* Typography */
+  --f-display: 'Iowan Old Style', 'Charter', 'Georgia', serif;
+  --f-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif;
+  --f-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+  /* Spacing */
+  --pad: 32px;
+
+  /* Motion (used by animations.css; declared here so motion tokens
+     can be referenced independently of the keyframes) */
+  --motion-aurora: 24s ease-in-out infinite alternate;
+  --motion-rise: 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+  --motion-caret: 1s steps(2) infinite;
+}
