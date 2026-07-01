@@ -186,7 +186,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** `curl http://host/api/does-not-exist` returns 404 JSON; `curl http://host/anything` returns the SPA `index.html`. `Dockerfile` builds clean, `docker compose up` reports the app `healthy` after boot.
 - **Depends on:** T29, T23
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T39 — Root package.json scripts
 

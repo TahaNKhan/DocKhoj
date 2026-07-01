@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
-import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { uploadRoutes } from './routes/upload.js';
@@ -15,12 +14,14 @@ import { initCollection } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
 import { migrate } from './db/migrate.js';
+import { mountSpa } from './server/spa.js';
 import { log } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const SHUTDOWN_TIMEOUT_MS = 30_000;
+const WEB_DIST = process.env.WEB_DIST || path.join(__dirname, '..', 'web', 'dist');
 
 export async function buildApp() {
   const fastify = Fastify({
@@ -59,11 +60,10 @@ export async function buildApp() {
     limits: { fileSize: 50 * 1024 * 1024, files: 100 },
   });
 
-  const publicPath = path.join(__dirname, '..', 'public');
-  await fastify.register(fastifyStatic, {
-    root: publicPath,
-    prefix: '/',
-  });
+  // Mount the SPA (web/dist/). Must run before the routes so the static
+  // plugin handles asset requests and the SPA fallback handler is
+  // installed before any route plugin can claim "/{page}" patterns.
+  await mountSpa(fastify, WEB_DIST);
 
   // Decorate the Fastify instance with the SQLite DB singleton BEFORE
   // any route plugin that depends on it (chat, chat-stream,
