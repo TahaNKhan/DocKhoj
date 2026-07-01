@@ -226,7 +226,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** A response containing `**bold**` and `` `code` `` renders as bold text and inline code in the assistant bubble. Adversarial `<script>alert(1)</script>` inside the response is sanitized to nothing. Streaming continues to work — the bubble re-renders on each token tick with markdown applied to the accumulated text.
 - **Depends on:** T33 (streaming pipeline already produces text)
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ## T45 — Chat scroll container (PRIORITY)
 

@@ -2,6 +2,12 @@
 // gradient surface with accent left bar). Streams a streaming caret
 // when `streaming` is true. Sources chips render when `sources` is
 // provided. Follow-up pills render when `followups` is provided.
+//
+// Assistant bubbles render their text as sanitized markdown (T44 /
+// FR-33). User bubbles render plain text — we never trust the user's
+// own input to be safe to inject as HTML.
+
+import { renderMarkdown } from '../services/markdown';
 
 export interface Source {
   id: string;
@@ -46,10 +52,20 @@ export function Bubble({
         <span class="dot" />
         {timestamp}
       </div>
-      <div class="text">
-        {text}
-        {streaming && <span class="caret" />}
-      </div>
+      {role === 'assistant' ? (
+        <div class="text">
+          {/* renderMarkdown runs marked.parse then DOMPurify.sanitize
+              (FR-33 XSS protection). Streaming re-renders on each
+              token tick; sanitization is cheap enough to do per chunk. */}
+          <div dangerouslySetInnerHTML={{ __html: renderMarkdown(text) }} />
+          {streaming && <span class="caret" />}
+        </div>
+      ) : (
+        <div class="text">
+          {text}
+          {streaming && <span class="caret" />}
+        </div>
+      )}
       {sources.length > 0 && (
         <div class="srcs">
           {sources.map((s) => (
