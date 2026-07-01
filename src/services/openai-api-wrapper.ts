@@ -8,6 +8,116 @@ const openai = new OpenAI({
 
 const LLM_MODEL = process.env.LLM_MODEL || 'gpt-4o';
 
+// Context size — resolved at module load in this order:
+//   1. `LLM_CONTEXT_SIZE` env var (explicit operator override; wins
+//      outright — useful when the chat provider doesn't expose the
+//      field via /v1/models and the model isn't in our table).
+//   2. Probe `/v1/models/{LLM_MODEL}` and read whichever extension
+//      field the provider actually exposes:
+//        - Ollama / Ollama Cloud:   context_length
+//        - LM Studio:               max_context_length
+//        - vLLM / TGI:              max_model_len
+//        - OpenAI / Azure / Anthropic via gateway: nothing
+//   3. Built-in size table for ~25 popular models.
+//
+// Returns `null` when none of the above knows the size — the SPA
+// renders the model name without a ctx pill and the operator can set
+// `LLM_CONTEXT_SIZE` to fix it.
+
+let cachedContextSize: number | null | undefined = undefined;
+
+const LLM_CONTEXT_SIZE_OVERRIDE = (() => {
+  const raw = process.env.LLM_CONTEXT_SIZE;
+  if (!raw) return null;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+})();
+
+const KNOWN_CONTEXT_SIZES: Record<string, number> = {
+  // OpenAI
+  'gpt-4o': 128_000,
+  'gpt-4o-mini': 128_000,
+  'gpt-4-turbo': 128_000,
+  'gpt-4': 8_192,
+  'gpt-3.5-turbo': 16_385,
+  'o1': 200_000,
+  'o1-mini': 128_000,
+  'o3-mini': 200_000,
+  // Anthropic (when routed through an OpenAI-compatible gateway)
+  'claude-3-5-sonnet-latest': 200_000,
+  'claude-3-5-haiku-latest': 200_000,
+  'claude-3-opus-latest': 200_000,
+  // Common local Ollama defaults
+  'llama3.1': 128_000,
+  'llama3.1:8b': 128_000,
+  'llama3.1:70b': 128_000,
+  'llama-3.1': 128_000,
+  'llama3.2': 128_000,
+  'qwen2.5': 32_768,
+  'mistral': 32_768,
+};
+
+function lookupKnownContextSize(modelId: string): number | null {
+  if (KNOWN_CONTEXT_SIZES[modelId] !== undefined) return KNOWN_CONTEXT_SIZES[modelId];
+  // Try prefix matches for variant strings like "llama3.1:8b-instruct-q4_K_M".
+  for (const [key, size] of Object.entries(KNOWN_CONTEXT_SIZES)) {
+    if (modelId.startsWith(key)) return size;
+  }
+  return null;
+}
+
+async function probeContextSize(): Promise<number | null> {
+  try {
+    const info = await openai.models.retrieve(LLM_MODEL);
+    // Cast to a record so we can probe extension fields without the
+    // SDK TypeScript types complaining.
+    const raw = info as unknown as Record<string, unknown>;
+    const candidates: unknown[] = [
+      raw['context_length'],
+      raw['max_context_length'],
+      raw['max_model_len'],
+      raw['context_window'],
+      raw['max_input_tokens'],
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'number' && Number.isFinite(c) && c > 0) return c;
+    }
+  } catch (err) {
+    log.warn({ err, model: LLM_MODEL }, 'Context-size probe failed; using known-table fallback');
+  }
+  return lookupKnownContextSize(LLM_MODEL);
+}
+
+async function ensureContextSize(): Promise<number | null> {
+  if (cachedContextSize !== undefined) {
+    return cachedContextSize;
+  }
+  if (LLM_CONTEXT_SIZE_OVERRIDE !== null) {
+    cachedContextSize = LLM_CONTEXT_SIZE_OVERRIDE;
+    log.info(
+      { model: LLM_MODEL, contextSize: cachedContextSize, source: 'LLM_CONTEXT_SIZE env override' },
+      'LLM context size set via env override'
+    );
+    return cachedContextSize;
+  }
+  const probed = await probeContextSize();
+  cachedContextSize = probed;
+  if (cachedContextSize !== null) {
+    log.info({ model: LLM_MODEL, contextSize: cachedContextSize }, 'LLM context size resolved');
+  } else {
+    log.info({ model: LLM_MODEL }, 'LLM context size unknown; set LLM_CONTEXT_SIZE to override');
+  }
+  return cachedContextSize;
+}
+
+/** Returns the LLM's context size in tokens (probed at boot, or the
+ *  value of `LLM_CONTEXT_SIZE` if set). `null` when the size is
+ *  unknown — the SPA will render the model name without a ctx pill
+ *  and the operator can set the env var to fix it. */
+export async function getLlmContextSize(): Promise<number | null> {
+  return ensureContextSize();
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;

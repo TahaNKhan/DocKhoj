@@ -1,6 +1,8 @@
 import { Bubble, type Source } from '../components/Bubble';
 import { Composer } from '../components/Composer';
 import type { Conversation, Message } from '../services/sessions';
+import type { ServerStatus } from '../services/status';
+import { formatContextSize } from '../services/status';
 
 // Chat — presentational route. Owns no state; the parent (<App>)
 // holds sessions, messages, and the streaming turn, and passes them
@@ -21,9 +23,18 @@ interface Props {
   messages: Message[];
   pending: PendingTurn | null;
   onSubmit: (text: string) => void;
+  status: ServerStatus | null;
 }
 
-export function Chat({ activeSession, loading, messages, pending, onSubmit }: Props) {
+export function Chat({ activeSession, loading, messages, pending, onSubmit, status }: Props) {
+  // Model pill: show the configured chat model + its probed context
+  // size (e.g. "gpt-4o · 128k ctx"). While /api/status is still being
+  // polled we render an em-dash so the pill width stays stable.
+  const modelLabel = status ? status.llmModel : '—';
+  const ctxLabel = status?.llmContextSize != null
+    ? `${formatContextSize(status.llmContextSize)} ctx`
+    : null;
+
   return (
     <section class="chat">
       <div class="toolbar">
@@ -31,9 +42,17 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit }: Pr
           Session <i>/</i>{' '}
           <b>{activeSession?.title ?? (loading ? 'loading…' : 'No session')}</b>
         </div>
-        <div class="model">
+        <div class="model" aria-live="polite">
           <span class="sw" />
-          <span>llama-3.1 · 8k ctx</span>
+          <span>
+            {modelLabel}
+            {ctxLabel && (
+              <>
+                {' · '}
+                {ctxLabel}
+              </>
+            )}
+          </span>
           <span class="car">▾</span>
         </div>
       </div>

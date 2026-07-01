@@ -17,6 +17,7 @@ import {
   type Message,
 } from './services/sessions';
 import { openChatStream, type StreamSource } from './services/stream';
+import { fetchStatus, type ServerStatus } from './services/status';
 import type { Source } from './components/Bubble';
 
 // App — top-level chrome (background layers, TopBar, layout split).
@@ -36,6 +37,7 @@ export function App() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [pending, setPending] = useState<PendingTurn | null>(null);
+  const [status, setStatus] = useState<ServerStatus | null>(null);
   const streamRef = useRef<{ close: () => void } | null>(null);
 
   // T46 follow-up: mobile sidebar (burger menu). The sidebar slides in
@@ -60,6 +62,30 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [sidebarOpen]);
+
+  // Poll /api/status every 5s for the TopBar pill (chunk count +
+  // Ollama reachability) and the chat toolbar's model pill (LLM_MODEL
+  // + the probed context size). The poll lives at App level so both
+  // components read from a single source.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+    const tick = async () => {
+      try {
+        const next = await fetchStatus();
+        if (!cancelled) setStatus(next);
+      } catch {
+        // Network blip — leave the last known status on screen.
+      } finally {
+        if (!cancelled) timer = window.setTimeout(tick, 5_000);
+      }
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, []);
 
   // On mount: load the session list, then restore the active
   // session from localStorage (or pick the most-recent, creating a
@@ -227,6 +253,7 @@ export function App() {
       <TopBar
         sidebarOpen={sidebarOpen}
         onToggleSidebar={() => setSidebarOpen((v) => !v)}
+        status={status}
       />
 
       <main class={isChatRoute ? 'layout' : ''}>
@@ -264,6 +291,7 @@ export function App() {
               messages={messages}
               pending={pending}
               onSubmit={handleSubmit}
+              status={status}
             />
           </Route>
           <Route path="/upload">
