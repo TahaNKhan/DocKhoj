@@ -28,7 +28,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Empty Preact app renders at `localhost:5173`; `web/dist/index.html` is produced by `build`.
 - **Depends on:** T22
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ## T24 — Extract design tokens + base styles
 
