@@ -18,7 +18,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** `npm install` at root + `npm --prefix web install` both succeed; lockfile updated; `web/package.json` lists SPA deps.
 - **Depends on:** —
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ## T23 — Create web/ scaffold
 
