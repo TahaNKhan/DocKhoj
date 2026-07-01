@@ -10,6 +10,7 @@ import { chatStreamRoutes } from './routes/chat-stream.js';
 import { downloadRoutes } from './routes/download.js';
 import { sessionRoutes } from './routes/api-sessions.js';
 import { healthRoutes } from './routes/api-health.js';
+import { statusRoutes } from './routes/api-status.js';
 import { initCollection } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
@@ -84,6 +85,10 @@ export async function buildApp() {
 
   // /api/health (moved from /health per FR-1 / FR-52).
   await fastify.register(healthRoutes);
+
+  // /api/status — live chunk count + Ollama reachability for the
+  // TopBar chrome.
+  await fastify.register(statusRoutes);
 
   return fastify;
 }

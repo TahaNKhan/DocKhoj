@@ -5,8 +5,11 @@
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "build": "tsc && npm run build:assets",
+    "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev:server\" \"npm run dev:web\"",
+    "dev:server": "tsx watch src/index.ts",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm run build:server && npm run build:web",
+    "build:server": "tsc && npm run build:assets",
     "build:assets": "node scripts/copy-assets.mjs",
     "build:web": "npm --prefix web install && npm --prefix web run build",
     "start": "node dist/index.js",

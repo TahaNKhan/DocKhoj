@@ -196,7 +196,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** `npm run build:web && npm run build` produces both bundles. `npm test` runs server and web tests. `npm run dev` starts both processes.
 - **Depends on:** T23
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ## T40 — Component tests
 

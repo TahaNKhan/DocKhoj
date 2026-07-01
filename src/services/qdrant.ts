@@ -312,4 +312,4 @@ export async function getCollectionInfo() {
   return await client.getCollection(COLLECTION_NAME);
 }
 
-export { client as qdrantClient };
+export { client as qdrantClient, COLLECTION_NAME as QDRANT_COLLECTION };
