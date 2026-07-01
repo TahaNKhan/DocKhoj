@@ -14,13 +14,17 @@ export const sessionRoutes: FastifyPluginAsync = async (fastify: FastifyInstance
   const getStore = () => new ConversationStore((fastify as unknown as { db: import('better-sqlite3').Database }).db);
 
   // POST /api/sessions — create a new session.
+  //
+  // Returns the FULL Conversation (id, title, titleSource, createdAt,
+  // updatedAt, messageCount), not a partial. The SPA's Conversation
+  // type expects every field and SessionRow calls
+  // relativeTime(updatedAt) — passing undefined would throw on the
+  // next render and silently drop the activeId update that
+  // handleCreate follows up with (so the new session appears in the
+  // sidebar list but never becomes active).
   fastify.post('/api/sessions', async (_request, reply) => {
     const session = getStore().create();
-    return reply.status(201).send({
-      id: session.id,
-      title: session.title,
-      createdAt: session.createdAt,
-    });
+    return reply.status(201).send(session);
   });
 
   // GET /api/sessions — list, most-recent first.
