@@ -106,7 +106,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** SPA lists real sessions, switches between them, persists selection across reload, displays the prior messages.
 - **Depends on:** T28, T25
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T31 — OpenAI streaming wrapper (additive) + title generator service
 
