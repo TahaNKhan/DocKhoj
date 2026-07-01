@@ -1,0 +1,115 @@
+/* TopBar — brand mark + nav pills + status indicator. */
+
+.topbar {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 18px var(--pad);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background: rgba(10, 9, 8, 0.7);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--f-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brand-mark {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent), #8a2818);
+  box-shadow: 0 0 28px var(--warm-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.brand-mark::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 50%;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent);
+}
+
+.brand-mark::after {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border-radius: 2px;
+  background: var(--cream);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+}
+
+.brand-name {
+  font-size: 18px;
+}
+
+.brand-name i {
+  color: var(--accent);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.topnav {
+  display: flex;
+  gap: 4px;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.topnav a {
+  padding: 8px 16px;
+  border-radius: 999px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  transition: 0.2s;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.topnav a:hover {
+  color: var(--fg);
+  border-color: var(--border);
+}
+
+.topnav a.active {
+  color: var(--cream);
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.topmeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.topmeta .label {
+  /* shown ≥ 960 px */
+}
+
+@media (max-width: 960px) {
+  .topnav,
+  .topmeta .label {
+    display: none;
+  }
+}

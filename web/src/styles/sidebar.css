@@ -1,0 +1,225 @@
+/* Sidebar — sessions list (with seed data in T25) and pinned section. */
+
+.side {
+  border-right: 1px solid var(--border);
+  padding: 22px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  overflow-y: auto;
+  background: linear-gradient(180deg, rgba(22, 19, 17, 0.6), rgba(22, 19, 17, 0.2));
+}
+
+.side h4 {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  color: var(--muted);
+  text-transform: uppercase;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.side h4 i {
+  color: var(--accent);
+  font-style: normal;
+  font-family: var(--f-display);
+  font-size: 13px;
+  letter-spacing: 0;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.session {
+  padding: 11px 13px;
+  border-radius: var(--r);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: 0.2s;
+  position: relative;
+}
+
+.session:hover {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.session.active {
+  background: var(--surface-2);
+  border-color: var(--border);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.session.active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 14px;
+  bottom: 14px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--accent), var(--accent-2));
+  border-radius: 0 2px 2px 0;
+}
+
+.session .t {
+  font-size: 13.5px;
+  font-weight: 500;
+  margin-bottom: 3px;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session .s {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: var(--f-mono);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.session .s .n {
+  color: var(--accent);
+}
+
+.side-foot {
+  margin-top: auto;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-soft);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.side-foot .k {
+  color: var(--cream);
+}
+
+/* Chat shell + main area + toolbar + stream — all live here because
+   they form one layout block (sidebar | area) at the chat page level.
+   Upload page lives outside this grid. */
+
+.chat-shell {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  height: calc(100vh - 65px);
+  max-width: 1500px;
+  margin: 0 auto;
+}
+
+.area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(10, 9, 8, 0.4);
+}
+
+.toolbar .crumb {
+  font-size: 12px;
+  color: var(--muted);
+  font-family: var(--f-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.toolbar .crumb b {
+  color: var(--cream);
+  font-weight: 500;
+}
+
+.toolbar .crumb i {
+  color: var(--accent);
+  font-style: normal;
+  margin: 0 8px;
+  opacity: 0.5;
+}
+
+.toolbar .model {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-family: var(--f-mono);
+  background: var(--surface);
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.toolbar .model:hover {
+  border-color: var(--muted);
+}
+
+.toolbar .model .sw {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+.toolbar .model .car {
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.stream {
+  flex: 1;
+  overflow-y: auto;
+  padding: 36px 24px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  scroll-behavior: smooth;
+  background: radial-gradient(80% 50% at 50% 0%, rgba(244, 236, 225, 0.02), transparent 60%);
+}
+
+@media (max-width: 960px) {
+  .chat-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .side {
+    display: none;
+  }
+
+  .toolbar {
+    padding: 12px 18px;
+  }
+
+  .stream {
+    padding: 24px 18px;
+  }
+
+  .composer {
+    padding: 14px 18px 18px;
+  }
+
+  .bubble {
+    max-width: 100%;
+  }
+}

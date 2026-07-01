@@ -48,7 +48,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Manual screenshot at 360 / 1024 / 1440 matches the mockup's layout at those widths; no horizontal scroll; sidebar collapses correctly.
 - **Depends on:** T24
 - **Estimate:** L
-- **Status:** todo
+- **Status:** done
 
 ## T26 — SQLite layer + migration runner
 

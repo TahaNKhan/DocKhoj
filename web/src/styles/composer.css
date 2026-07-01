@@ -1,0 +1,82 @@
+/* Composer — textarea + send. Tag pill row + voice button are
+   dropped per FR-37 / FR-38 (decorative-only in the mockup). */
+
+.composer {
+  border-top: 1px solid var(--border);
+  padding: 18px 24px 22px;
+  background: linear-gradient(180deg, transparent, rgba(10, 9, 8, 0.7));
+}
+
+.composer .box {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  background: var(--surface);
+  transition: 0.2s;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.composer .box:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft), 0 8px 24px rgba(0, 0, 0, 0.25);
+}
+
+.composer textarea {
+  flex: 1;
+  min-height: 26px;
+  max-height: 200px;
+  resize: none;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  color: var(--fg);
+  font: inherit;
+  font-size: 15.5px;
+  line-height: 1.5;
+}
+
+.composer textarea::placeholder {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.send {
+  padding: 9px 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--cream);
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: 0.2s;
+  box-shadow: 0 4px 16px rgba(226, 85, 64, 0.35);
+  cursor: pointer;
+}
+
+.send:hover {
+  transform: translateX(2px);
+  box-shadow: 0 6px 20px rgba(226, 85, 64, 0.45);
+}
+
+.send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.send .kbd {
+  margin-left: 6px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: rgba(10, 9, 8, 0.3);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.75;
+}

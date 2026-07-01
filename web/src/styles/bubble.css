@@ -1,0 +1,179 @@
+/* Bubble — chat turn (user / assistant). Streaming caret lives in
+   animations.css (.caret). Source chips and follow-up pills live
+   here too so the bubble is self-contained. */
+
+.bubble {
+  max-width: 780px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.bubble.user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.bubble .who {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bubble .who .dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.bubble .who b {
+  color: var(--cream);
+  font-weight: 500;
+}
+
+.bubble .text {
+  padding: 16px 20px;
+  border-radius: var(--r);
+  font-size: 15.5px;
+  line-height: 1.65;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+.bubble .text b {
+  color: var(--cream);
+  font-weight: 600;
+}
+
+.bubble .text em {
+  color: var(--accent-2);
+  font-style: italic;
+}
+
+.bubble .text code {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  background: rgba(244, 236, 225, 0.06);
+  padding: 2px 6px;
+  border-radius: 3px;
+  color: var(--accent-2);
+}
+
+.bubble .text pre {
+  background: rgba(244, 236, 225, 0.06);
+  padding: 12px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 10px 0;
+  font-family: var(--f-mono);
+  font-size: 13px;
+}
+
+.bubble.ai .text {
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border-color: var(--border);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  position: relative;
+}
+
+.bubble.ai .text::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 18px;
+  bottom: 18px;
+  width: 2px;
+  background: linear-gradient(180deg, var(--accent), transparent);
+  border-radius: 0 2px 2px 0;
+}
+
+.bubble.user .text {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--cream);
+  box-shadow: 0 8px 24px rgba(226, 85, 64, 0.25);
+}
+
+.bubble .srcs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.chip {
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding: 5px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: rgba(244, 236, 225, 0.03);
+  color: var(--fg-soft);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.chip:hover {
+  background: rgba(244, 236, 225, 0.06);
+  border-color: var(--muted);
+}
+
+.chip .n {
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 11px;
+}
+
+.chip .p {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.followups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+  max-width: 780px;
+  align-self: flex-start;
+}
+
+.followup {
+  font-size: 13px;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(244, 236, 225, 0.02);
+  color: var(--fg-soft);
+  cursor: pointer;
+  transition: 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.followup:hover {
+  background: rgba(226, 85, 64, 0.08);
+  border-color: var(--accent);
+  color: var(--cream);
+}
+
+.followup::before {
+  content: "→";
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: 11px;
+}
