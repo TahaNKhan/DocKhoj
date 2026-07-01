@@ -222,6 +222,7 @@ export type StreamEvent =
   | { type: 'sources'; sources: Source[] }
   | { type: 'token'; text: string }
   | { type: 'done'; messageId: string; totalTokens?: number }
+  | { type: 'title'; sessionId: string; title: string }   // NEW — best-effort post-`done`
   | { type: 'error'; message: string };
 ```
 
@@ -247,9 +248,24 @@ export class ConversationStore {
     sources: Source[]
   ): Message;
   listMessages(conversationId: string): Message[];
-  autoTitle(conversationId: string): void;     // first 60 chars of first user msg
   bumpUpdatedAt(conversationId: string): void; // called on every append
+
+  // Title preservation: only allow renaming to a non-trivial title if the current
+  // title is still the default or a generated-from-user-msg prefix. Used by the
+  // LLM-driven title generator to avoid overwriting user-renamed sessions (FR-15b).
+  setGeneratedTitle(conversationId: string, title: string): void;
 }
+
+// src/services/title-generator.ts (NEW)
+export async function generateConversationTitle(
+  firstUserMessage: string,
+  firstAssistantMessage: string,
+  signal?: AbortSignal
+): Promise<string>;
+
+// Returns a 5-8 word title (no quotes, no preamble). Falls back to a 60-char
+// prefix of the first user message on OpenAI failure (FR-15 sync path).
+export function fallbackTitle(firstUserMessage: string): string;
 
 // src/services/stream-chat.ts
 export async function* streamChatCompletion(
@@ -267,6 +283,11 @@ export async function* streamChatCompletionRaw(
   messages: ChatMessage[],
   signal: AbortSignal
 ): AsyncGenerator<{ text: string }>;
+
+export async function generateChatCompletion(
+  messages: ChatMessage[],
+  signal?: AbortSignal
+): Promise<string>; // for non-streaming title generation
 ```
 
 ### HTTP
@@ -334,6 +355,7 @@ export function migrate(db: Database, dir: string): void {
 // src/routes/chat.ts (POST /api/chat/stream)
 import { streamChatCompletion } from '../services/stream-chat.js';
 import { ConversationStore } from '../services/conversations.js';
+import { generateConversationTitle, fallbackTitle } from '../services/title-generator.js';
 
 fastify.post('/api/chat/stream', async (request, reply) => {
   const { q, sessionId: providedSid, limit, expand } = request.body as ChatBody;
@@ -356,8 +378,13 @@ fastify.post('/api/chat/stream', async (request, reply) => {
 
   const userMessageId = uuidv4();
   let fullText = '';
+  let firstExchange = false;
 
   try {
+    // Detect first exchange (only fire title gen on the user's first assistant-complete turn).
+    const priorMessages = store.listMessages(sid);
+    firstExchange = priorMessages.length === 0;
+
     store.appendUserMessage(sid, q);
     writeEvent(reply.raw, 'meta', { sessionId: sid, userMessageId });
 
@@ -383,14 +410,38 @@ fastify.post('/api/chat/stream', async (request, reply) => {
       }
     }
     if (ac.signal.aborted) return; // client gone — do not persist or send done
+
     const assistantMessageId = store
       .appendAssistantMessage(sid, fullText, sources).id;
     writeEvent(reply.raw, 'done', { messageId: assistantMessageId });
+
+    // Title generation: best-effort, post-`done`. Fire and forget — do NOT
+    // await; the client's stream is open until the write succeeds or the
+    // connection closes.
+    if (firstExchange) {
+      void (async () => {
+        try {
+          const llmTitle = await generateConversationTitle(q, fullText);
+          const title = llmTitle ?? fallbackTitle(q);
+          store.setGeneratedTitle(sid, title); // respects FR-15b (no overwrite user-renamed)
+          // Best-effort delivery: if client already gone, writeEvent fails silently.
+          writeEvent(reply.raw, 'title', { sessionId: sid, title });
+        } catch (err) {
+          log.warn({ err }, 'Title generation failed; falling back');
+          const title = fallbackTitle(q);
+          store.setGeneratedTitle(sid, title);
+          writeEvent(reply.raw, 'title', { sessionId: sid, title });
+        } finally {
+          reply.raw.end();
+        }
+      })();
+    } else {
+      reply.raw.end();
+    }
   } catch (err) {
     if (ac.signal.aborted) return;
     log.error({ err }, 'Chat stream error');
     writeEvent(reply.raw, 'error', { message: 'Chat failed' });
-  } finally {
     reply.raw.end();
   }
 });
@@ -398,6 +449,120 @@ fastify.post('/api/chat/stream', async (request, reply) => {
 function writeEvent(stream: NodeJS.WritableStream, event: string, data: unknown) {
   stream.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
+```
+
+### Title generator
+
+```ts
+// src/services/title-generator.ts
+const TITLE_PROMPT: ChatMessage[] = [
+  {
+    role: 'system',
+    content:
+      'You generate concise 5-8 word conversation titles. ' +
+      'Respond with ONLY the title. No quotes, no preamble, no trailing punctuation.',
+  },
+];
+
+export async function generateConversationTitle(
+  firstUserMessage: string,
+  firstAssistantMessage: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const response = await openai.chat.completions.create(
+    {
+      model: LLM_MODEL,
+      messages: [
+        ...TITLE_PROMPT,
+        {
+          role: 'user',
+          content:
+            `User asked: ${firstUserMessage.slice(0, 500)}\n\n` +
+            `Assistant answered: ${firstAssistantMessage.slice(0, 1000)}`,
+        },
+      ],
+      max_tokens: 30,
+      temperature: 0.3,
+    },
+    signal ? { signal } : undefined
+  );
+  const raw = response.choices?.[0]?.message?.content?.trim() ?? '';
+  // Strip quotes, trailing punctuation, and clamp to a reasonable length.
+  return raw
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/[.!?]+$/, '')
+    .slice(0, 80)
+    .trim();
+}
+
+export function fallbackTitle(firstUserMessage: string): string {
+  const trimmed = firstUserMessage.trim();
+  if (trimmed.length <= 60) return trimmed;
+  return trimmed.slice(0, 57).trimEnd() + '…';
+}
+```
+
+### Sync title delivery (`POST /api/chat`)
+
+```ts
+// src/routes/chat.ts (POST /api/chat — non-streaming)
+import { generateConversationTitle, fallbackTitle } from '../services/title-generator.js';
+
+fastify.post('/api/chat', async (request, reply) => {
+  const { q, sessionId: providedSid, limit, expand } = request.body as ChatBody;
+  if (!q) return reply.status(400).send({ error: 'Question "q" is required' });
+
+  const store = new ConversationStore(db);
+  const sid = providedSid ?? store.create().id;
+  if (!/^[A-Za-z0-9_-]{1,64}$/.test(sid)) {
+    return reply.status(400).send({ error: 'Invalid sessionId' });
+  }
+
+  const firstExchange = store.listMessages(sid).length === 0;
+  store.appendUserMessage(sid, q);
+
+  const queryVector = await embedText(q);
+  const baseResults = await searchChunks(queryVector, { limit: limit ?? 5 });
+  const results = await expandHits(baseResults, { mode: expandMode(expand) });
+
+  if (results.length === 0) {
+    return {
+      answer: 'No relevant documents found. Try indexing some documents first.',
+      sources: [],
+      sessionId: sid,
+      expandMode,
+      title: firstExchange ? fallbackTitle(q) : (store.get(sid)?.title ?? 'New chat'),
+    };
+  }
+
+  const contextChunks = results.map(...);
+  const history = store.listMessages(sid).slice(-CHAT_HISTORY_MAX_TURNS * 2);
+  const response = await chatWithDocuments(q, contextChunks, history);
+  store.appendAssistantMessage(sid, response.answer, ...);
+
+  // Concurrent title generation. Race: which finishes first, the LLM title
+  // call or the main chat response? Either way, return whatever title is
+  // best when the response goes out. Persist the LLM title after the fact
+  // if it lands later.
+  let title: string = firstExchange ? fallbackTitle(q) : (store.get(sid)?.title ?? 'New chat');
+  if (firstExchange) {
+    try {
+      const llmTitle = await generateConversationTitle(q, response.answer);
+      title = llmTitle || title;
+      store.setGeneratedTitle(sid, title); // FR-15b: respect existing user rename
+    } catch {
+      // keep fallback
+    }
+  }
+
+  return {
+    answer: response.answer,
+    sources: response.sources,
+    sessionId: sid,
+    expandMode,
+    title,
+  };
+});
 ```
 
 ### OpenAI streaming wrapper (additive)
@@ -434,6 +599,7 @@ export type StreamEvent =
   | { type: 'sources'; sources: Source[] }
   | { type: 'token'; text: string }
   | { type: 'done'; messageId: string }
+  | { type: 'title'; sessionId: string; title: string }
   | { type: 'error'; message: string };
 
 export function openChatStream(
@@ -570,6 +736,9 @@ fastify.get('/api/upload/progress', async (request, reply) => {
 | Vite build failure | `npm run build:web` exits non-zero; CI/operator notices. |
 | `/api/*` GET to unknown route | JSON 404 from `setNotFoundHandler` (NOT the SPA `index.html`). |
 | `/{page}` GET to unknown page | SPA `index.html` from `setNotFoundHandler`; client router renders a "not found" view. |
+| Title generation LLM fails | `fallbackTitle` (60-char user prefix) is used; `event: title` still emits so the UI updates. Failure is logged at `warn` level, not `error`. |
+| `event: title` arrives after the client disconnected | The title is still persisted server-side; the SSE write to a closed stream is a no-op; the stream is allowed to close without `event: title` reaching the client. |
+| Client receives `event: title` for a session it has navigated away from | Client-side: the stream is already aborted; no `onEvent` handler is wired. The session's title is updated silently on the server but only surfaces if the client re-loads sessions (e.g. on next page mount). |
 
 ## Testing strategy
 
@@ -677,13 +846,13 @@ Roughly one task per logical commit. Each task sized to be reviewable, runs the 
 3. **T24** — Extract design tokens: copy `:root` from `mockups/dockhoj-chat-v2.html` into `web/src/styles/tokens.css`. Add `base.css` (reset, body, selection). Add `animations.css` (aurora, grain, grid, pulse, rise, caret, blink).
 4. **T25** — Build static UI scaffold (no API yet): `TopBar`, `Sidebar` (with seed sessions), `Bubble`, `Composer` (no-op), `Dropzone`, `QueueRow` (static). Render both routes with sample data; verify visual contract at all design-spec viewports. Add responsive styles.
 5. **T26** — Add `src/db/`, `001_init.sql`, `migrate.ts`. Wire `migrate()` into `index.ts` startup before `initCollection()`.
-6. **T27** — Implement `services/conversations.ts` (CRUD + message append + auto-title + listMessages). Unit tests against `:memory:` DB.
+6. **T27** — Implement `services/conversations.ts` (CRUD + message append + `setGeneratedTitle` respecting FR-15b + listMessages). Unit tests against `:memory:` DB.
 7. **T28** — Add `routes/api-sessions.ts` (POST/GET/PATCH/DELETE + `:id/messages`). Route tests via `fastify.inject`.
 8. **T29** — **Path migration cut:** move every existing API endpoint from its old path to `/api/*`. Update `routes/chat.ts`, `routes/search.ts`, `routes/upload.ts`, `routes/download.ts`, add `routes/api-health.ts` for `/api/health`. Update `routes/upload.ts` to publish to `uploadBus`. Update all callers (existing tests, README) to use the new paths.
 9. **T30** — Wire SPA to `/api/sessions`: `web/src/services/sessions.ts` (typed fetch), `Sidebar.tsx` (real list), click-to-switch.
-10. **T31** — Add `streamChatCompletionRaw` to `services/openai-api-wrapper.ts` (additive).
+10. **T31** — Add `streamChatCompletionRaw` to `services/openai-api-wrapper.ts` (additive). Create `services/title-generator.ts` (`generateConversationTitle` + `fallbackTitle`).
 11. **T32** — Add `services/stream-chat.ts` orchestrating: embed → search → prompt → stream → emit SSE. Stub-friendly.
-12. **T33** — Add `routes/chat.ts` `POST /api/chat/stream` SSE handler. Route tests assert event sequence + abort on disconnect.
+12. **T33** — Add `routes/chat.ts` `POST /api/chat/stream` SSE handler with post-`done` `event: title` emission. Update `POST /api/chat` (non-stream) to include a `title` field via concurrent LLM call. Client SSE parser handles the new `title` event. Route tests assert event sequence including the title event.
 13. **T34** — Client SSE: `web/src/services/stream.ts`. `Bubble.tsx` renders streamed tokens live. `Composer.tsx` sends via `openChatStream`. Test SSE parser.
 14. **T35** — Add `routes/api-status.ts` (`GET /api/status` → `{chunks, ollamaAvailable}`). `TopBar.tsx` reads it on mount.
 15. **T36** — Add upload progress event bus: `uploadBus` in `routes/upload.ts`. Subscribe in new `/api/upload/progress` SSE handler (`routes/upload-progress.ts`). Route test.
@@ -701,7 +870,7 @@ Roughly one task per logical commit. Each task sized to be reviewable, runs the 
 - **OD-2** — `better-sqlite3` (recommended) vs `node:sqlite` (Node 22+ built-in, experimental). See OQ-2 in requirements.
 - **OD-3** — SPA fallback is catch-all (`setNotFoundHandler` for non-`/api/*` GETs). See OQ-3 in requirements.
 - **OD-4** — Keep sessionId regex `^[A-Za-z0-9_-]{1,64}$` (UUIDv4 fits). See OQ-4 in requirements.
-- **OD-5** — Auto-title: first 60 chars of the first user message, ellipsised. See OQ-5 in requirements.
+- **OD-5** — Title generation: **LLM-driven and asynchronous** (recommended). See OQ-5 in requirements. The 60-char user-prefix fallback is preserved for the sync API path if the LLM call fails, and is never used as the *primary* title.
 - **OD-6** — Source-chip opens an inline drawer. See OQ-6 in requirements.
 - **OD-7** — Topbar chunk count is live from `/api/status`. See OQ-7 in requirements.
 - **OD-8** — "Single-server-executable" interpretation: default = single Node process serving everything (FR-55). Optional future path = `bun build --compile` or `pkg` for a true single binary. See OQ-8.

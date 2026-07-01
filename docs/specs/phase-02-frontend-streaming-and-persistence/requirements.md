@@ -68,81 +68,85 @@ After this phase:
 - **FR-11** `GET /api/sessions/:id/messages` MUST return all turns in chronological order: `[{role: 'user' | 'assistant', content, sources?, createdAt}]`.
 - **FR-12** `PATCH /api/sessions/:id` MUST support renaming (`{title: string}`). Other fields (`createdAt`, `updatedAt`, `messages`) are server-managed.
 - **FR-13** `DELETE /api/sessions/:id` MUST remove the conversation and all its messages. Returns `204`.
-- **FR-14** The server MUST auto-title a session from its first user message (first 60 chars, ellipsised) on the first assistant response.
-- **FR-15** The server MUST bump `updatedAt` on each new turn (used for sidebar ordering).
-- **FR-16** `CHAT_HISTORY_MAX_TURNS` (default 20) MUST bound the number of in-context turns sent to the LLM per request — same as Phase 01. Persistence is unbounded; the cap is only on context size.
+- **FR-14** **Title generation is LLM-driven and asynchronous.** After the first complete exchange in a session (user message + assistant response), the server MUST fire off a background LLM call that produces a concise 5–8 word title summarizing the conversation. The title is persisted to SQLite on completion. **The chat response itself is not blocked on this call.**
+- **FR-15** **Sync delivery (`POST /api/chat`):** The JSON response MUST include a `title` field. When the first-exchange title generation completes before the main response, that title is returned; otherwise the server may fall back to a short prefix of the user's message (≤ 60 chars, ellipsised) and update the title out-of-band via streaming-update semantics (see FR-15a). In either case, the title field is non-null.
+- **FR-15a** **Async delivery (`POST /api/chat/stream`):** After `event: done`, the SSE stream MUST emit `event: title\ndata: {"title":"...", "sessionId":"..."}\n\n` when the LLM-generated title lands. **Best-effort delivery**: if the client has disconnected by the time the title is generated, the title is still persisted server-side; no error event is emitted; the stream is allowed to close without the title event.
+- **FR-15b** **No overwriting user-renamed sessions.** If a session's title is anything other than `"New chat"` OR the LLM-generated title's first-60-char prefix fallback, the generated title MUST NOT replace it.
+- **FR-16** The server MUST bump `updatedAt` on each new turn (used for sidebar ordering).
+- **FR-17** `CHAT_HISTORY_MAX_TURNS` (default 20) MUST bound the number of in-context turns sent to the LLM per request — same as Phase 01. Persistence is unbounded; the cap is only on context size.
 
 ### Chat streaming
 
-- **FR-17** `POST /api/chat/stream` MUST accept the same body as `POST /api/chat` (`{q, sessionId?, limit?, expand?}`) and stream the response via Server-Sent Events.
-- **FR-18** The SSE stream MUST emit typed events. Wire format (each event is a single SSE frame):
+- **FR-18** `POST /api/chat/stream` MUST accept the same body as `POST /api/chat` (`{q, sessionId?, limit?, expand?}`) and stream the response via Server-Sent Events.
+- **FR-19** The SSE stream MUST emit typed events. Wire format (each event is a single SSE frame):
   - `event: meta\ndata: {"sessionId":"...","userMessageId":"..."}\n\n`
   - `event: sources\ndata: [{"fileName":"...","filePath":"...","chunk":"...","pageNumber":3,"headingPath":["..."],"score":0.87}]\n\n`
   - `event: token\ndata: {"text":"chunk of text"}\n\n` (one per OpenAI delta)
   - `event: done\ndata: {"messageId":"...","totalTokens":N}\n\n`
+  - `event: title\ndata: {"sessionId":"...","title":"..."}\n\n` (best-effort, post-`done`; see FR-15a)
   - `event: error\ndata: {"message":"sanitized message"}\n\n`
-- **FR-19** `event: token` events MUST be emitted for every `choices[0].delta.content` chunk from the OpenAI-compatible API when `stream: true` is set. The OpenAI SDK's async iterator is the source.
-- **FR-20** The SSE handler MUST strip `` blocks (existing behavior in `openai-api-wrapper.ts:stripThinkTags`) and MUST NOT emit them as tokens.
-- **FR-21** On client disconnect (browser closes the tab or navigates away), the server MUST abort the in-flight OpenAI stream within the next event-loop tick (using `AbortController` passed to `openai.chat.completions.create`). No orphan requests.
-- **FR-22** The completed assistant message MUST be persisted to SQLite with the full final text and the sources array. `sources` is stored as JSON.
-- **FR-23** Errors from the OpenAI API (4xx, 5xx, network) MUST emit a single `event: error` with a sanitized message (no API key, no stack trace) and close the stream with `event: done` immediately after.
-- **FR-24** If the embedding step fails (Ollama 404, network), the handler MUST emit `event: error` with `"embedding unavailable"` and close.
+- **FR-20** `event: token` events MUST be emitted for every `choices[0].delta.content` chunk from the OpenAI-compatible API when `stream: true` is set. The OpenAI SDK's async iterator is the source.
+- **FR-21** The SSE handler MUST strip `` blocks (existing behavior in `openai-api-wrapper.ts:stripThinkTags`) and MUST NOT emit them as tokens.
+- **FR-22** On client disconnect (browser closes the tab or navigates away), the server MUST abort the in-flight OpenAI stream within the next event-loop tick (using `AbortController` passed to `openai.chat.completions.create`). No orphan requests.
+- **FR-23** The completed assistant message MUST be persisted to SQLite with the full final text and the sources array. `sources` is stored as JSON.
+- **FR-24** Errors from the OpenAI API (4xx, 5xx, network) MUST emit a single `event: error` with a sanitized message (no API key, no stack trace) and close the stream with `event: done` immediately after.
+- **FR-25** If the embedding step fails (Ollama 404, network), the handler MUST emit `event: error` with `"embedding unavailable"` and close.
 
 ### Upload progress
 
-- **FR-25** `POST /api/upload` MUST continue to return `{success, fileName, chunksIndexed, fileId}` synchronously after the file is fully indexed. No SSE on upload itself.
-- **FR-26** `GET /api/upload/progress` SSE endpoint MUST emit per-file progress events while any upload is in flight:
+- **FR-26** `POST /api/upload` MUST continue to return `{success, fileName, chunksIndexed, fileId}` synchronously after the file is fully indexed. No SSE on upload itself.
+- **FR-27** `GET /api/upload/progress` SSE endpoint MUST emit per-file progress events while any upload is in flight:
   - `event: file\ndata: {"fileName":"...","status":"queued|embedding|ready|failed","progress":0..100,"chunksIndexed":N,"error":null|"..."}\n\n`
   - `event: idle\ndata: {}\n\n` when no upload is active (initial state on subscription).
-- **FR-27** An in-process `EventEmitter` MUST coordinate between the upload route and the progress SSE handler. The handler subscribes; the upload route publishes per-stage progress.
+- **FR-28** An in-process `EventEmitter` MUST coordinate between the upload route and the progress SSE handler. The handler subscribes; the upload route publishes per-stage progress.
 
 ### Chat UI
 
-- **FR-28** `/chat` MUST render the chat shell from `mockups/dockhoj-chat-v2.html`: topbar (brand, nav, status), sidebar (sessions), main area (toolbar, stream, composer).
-- **FR-29** On mount, `/chat` MUST load the session list (`GET /api/sessions`) and either restore the session from URL hash or default to the most recent session (creating a new one if none exist).
-- **FR-30** Clicking a session in the sidebar MUST set the URL hash to `#session=<id>` and load that session's messages via `GET /api/sessions/:id/messages`. Mid-stream aborts cleanly.
-- **FR-31** Clicking the `+` in the "Sessions" header MUST `POST /api/sessions` and switch to it.
-- **FR-32** Sending a message MUST `POST /api/chat/stream` with the user's text. Tokens append to the AI bubble in real time. Sources chips render when `event: sources` arrives. The bubble shows "thinking…" briefly before the first token only if the first token takes >200 ms (don't flash it).
-- **FR-33** Markdown in assistant bubbles MUST be sanitized via DOMPurify before rendering (existing XSS protection, retained).
-- **FR-34** Clicking a source chip MUST open an inline drawer with the full chunk text, page/heading metadata, and an "Open file" link to `/api/download/<file>`.
-- **FR-35** The composer MUST auto-resize the textarea (1 to 6 lines). Enter sends, Shift+Enter inserts a newline.
-- **FR-36** The toolbar model label (e.g. "llama-3.1 · 8k ctx") is **informational chrome** in this phase — it reflects the current `LLM_MODEL` env var. A real model picker is **out of scope**.
-- **FR-37** The "Cite sources" / "Stream" / "Multi-doc" tags visible in the mockup's composer are **dropped** in this phase — they're decorative; their behaviour is either always-on (streaming, citations) or out of scope (multi-doc filtering). Documenting here so we don't re-add them later by accident.
-- **FR-38** The "voice input" button is **dropped** in this phase. The compose row renders a single Send button.
-- **FR-39** The topbar's "online · N chunks" status MUST reflect real values from `GET /api/status` returning `{chunks: number}`. The live pulse dot is on if `ollamaAvailable === true`, off otherwise.
+- **FR-29** `/chat` MUST render the chat shell from `mockups/dockhoj-chat-v2.html`: topbar (brand, nav, status), sidebar (sessions), main area (toolbar, stream, composer).
+- **FR-30** On mount, `/chat` MUST load the session list (`GET /api/sessions`) and either restore the session from URL hash or default to the most recent session (creating a new one if none exist).
+- **FR-31** Clicking a session in the sidebar MUST set the URL hash to `#session=<id>` and load that session's messages via `GET /api/sessions/:id/messages`. Mid-stream aborts cleanly.
+- **FR-32** Clicking the `+` in the "Sessions" header MUST `POST /api/sessions` and switch to it.
+- **FR-33** Sending a message MUST `POST /api/chat/stream` with the user's text. Tokens append to the AI bubble in real time. Sources chips render when `event: sources` arrives. The bubble shows "thinking…" briefly before the first token only if the first token takes >200 ms (don't flash it).
+- **FR-34** Markdown in assistant bubbles MUST be sanitized via DOMPurify before rendering (existing XSS protection, retained).
+- **FR-35** Clicking a source chip MUST open an inline drawer with the full chunk text, page/heading metadata, and an "Open file" link to `/api/download/<file>`.
+- **FR-36** The composer MUST auto-resize the textarea (1 to 6 lines). Enter sends, Shift+Enter inserts a newline.
+- **FR-37** The toolbar model label (e.g. "llama-3.1 · 8k ctx") is **informational chrome** in this phase — it reflects the current `LLM_MODEL` env var. A real model picker is **out of scope**.
+- **FR-38** The "Cite sources" / "Stream" / "Multi-doc" tags visible in the mockup's composer are **dropped** in this phase — they're decorative; their behaviour is either always-on (streaming, citations) or out of scope (multi-doc filtering). Documenting here so we don't re-add them later by accident.
+- **FR-39** The "voice input" button is **dropped** in this phase. The compose row renders a single Send button.
+- **FR-40** The topbar's "online · N chunks" status MUST reflect real values from `GET /api/status` returning `{chunks: number}`. The live pulse dot is on if `ollamaAvailable === true`, off otherwise.
 
 ### Upload UI
 
-- **FR-40** `/upload` MUST render the upload shell from `mockups/dockhoj-upload-v2.html`: page head (eyebrow + H1 + paragraph + right-side chunk count), dropzone big (with floating orb), queue section.
-- **FR-41** Files dropped on the dropzone MUST call `POST /api/upload` per file (bounded parallel ≤4) and subscribe to `GET /api/upload/progress` for live updates.
-- **FR-42** The queue row MUST render per-file: file-type chip, name, size + estimated chunks, animated progress bar, percentage, status text (`queued → embedding → ready`), remove button.
-- **FR-43** The right-aligned index count in the page head MUST update from `/api/status` on mount.
-- **FR-44** Drag-over and drop states MUST use the design's hover transform and border-colour animation.
+- **FR-41** `/upload` MUST render the upload shell from `mockups/dockhoj-upload-v2.html`: page head (eyebrow + H1 + paragraph + right-side chunk count), dropzone big (with floating orb), queue section.
+- **FR-42** Files dropped on the dropzone MUST call `POST /api/upload` per file (bounded parallel ≤4) and subscribe to `GET /api/upload/progress` for live updates.
+- **FR-43** The queue row MUST render per-file: file-type chip, name, size + estimated chunks, animated progress bar, percentage, status text (`queued → embedding → ready`), remove button.
+- **FR-44** The right-aligned index count in the page head MUST update from `/api/status` on mount.
+- **FR-45** Drag-over and drop states MUST use the design's hover transform and border-colour animation.
 
 ### Responsive
 
-- **FR-45** Both pages MUST match the design's breakpoints: ≤960 px (mobile) collapses the sidebar and topnav, hides the model menu; ≤640 px reflows the upload queue to single-column.
-- **FR-46** No horizontal scroll at any of the design's viewport widths (360, 390, 430, 600, 820, 1024, 1366, 1440, 1920).
+- **FR-46** Both pages MUST match the design's breakpoints: ≤960 px (mobile) collapses the sidebar and topnav, hides the model menu; ≤640 px reflows the upload queue to single-column.
+- **FR-47** No horizontal scroll at any of the design's viewport widths (360, 390, 430, 600, 820, 1024, 1366, 1440, 1920).
 
 ### Build, package, deploy
 
-- **FR-47** A new `web/` directory at repo root MUST contain the Vite + Preact SPA. It has its own `package.json`, `tsconfig.json`, and `vite.config.ts`.
-- **FR-48** The Vite config MUST use `@preact/preset-vite` and `vite-plugin-singlefile` (or equivalent) to produce a single-file bundle. Bundle size target: < 300 KB gzipped (Preact + components + marked + DOMPurify + design CSS).
-- **FR-49** The root `package.json` MUST add scripts:
+- **FR-48** A new `web/` directory at repo root MUST contain the Vite + Preact SPA. It has its own `package.json`, `tsconfig.json`, and `vite.config.ts`.
+- **FR-49** The Vite config MUST use `@preact/preset-vite` and `vite-plugin-singlefile` (or equivalent) to produce a single-file bundle. Bundle size target: < 300 KB gzipped (Preact + components + marked + DOMPurify + design CSS).
+- **FR-50** The root `package.json` MUST add scripts:
   - `build:web`: `npm --prefix web install && npm --prefix web run build`
   - `dev`: orchestrates `tsx watch src/index.ts` for the server and `npm --prefix web run dev` for the client (uses `concurrently`).
-- **FR-50** `Dockerfile` MUST copy `web/dist/` into `/app/web/dist` and the Fastify app MUST serve those assets. SPA fallback (`/*` → `index.html`, except `/api/*`) MUST be wired.
-- **FR-51** `Dockerfile` MUST run `npm run build:web` during the image build before pruning dev dependencies, so the production image contains the built bundle.
-- **FR-52** `Dockerfile` `HEALTHCHECK` MUST target `/api/health` (moved from `/health`).
-- **FR-53** `Dockerfile.ollama` is unchanged from commit `3d2ace7`.
-- **FR-54** `docker-compose.yml` MUST add a new named volume `conversations_data` mounted to `/app/data` where SQLite lives. The volume persists across container restarts and rebuilds.
-- **FR-55** **Single-server-executable deployment:** one Fastify process (`node dist/index.js`) runs inside the app container. It serves the SPA static (`web/dist/`), all `/api/*` routes, and the SPA fallback. No nginx, no separate static-file server, no bundling complexity beyond Vite + tsc.
+- **FR-51** `Dockerfile` MUST copy `web/dist/` into `/app/web/dist` and the Fastify app MUST serve those assets. SPA fallback (`/*` → `index.html`, except `/api/*`) MUST be wired.
+- **FR-52** `Dockerfile` MUST run `npm run build:web` during the image build before pruning dev dependencies, so the production image contains the built bundle.
+- **FR-53** `Dockerfile` `HEALTHCHECK` MUST target `/api/health` (moved from `/health`).
+- **FR-54** `Dockerfile.ollama` is unchanged from commit `3d2ace7`.
+- **FR-55** `docker-compose.yml` MUST add a new named volume `conversations_data` mounted to `/app/data` where SQLite lives. The volume persists across container restarts and rebuilds.
+- **FR-56** **Single-server-executable deployment:** one Fastify process (`node dist/index.js`) runs inside the app container. It serves the SPA static (`web/dist/`), all `/api/*` routes, and the SPA fallback. No nginx, no separate static-file server, no bundling complexity beyond Vite + tsc.
 
 ### Tests
 
-- **FR-56** Unit tests MUST cover the SQLite store: conversation CRUD, message append, message ordering, `updatedAt` bumping, cascade delete.
-- **FR-57** Unit tests MUST cover the SSE parser on the client side: event-type dispatch, malformed-line tolerance, reconnect on dropped connection.
-- **FR-58** Route tests (via `fastify.inject`) MUST cover:
+- **FR-57** Unit tests MUST cover the SQLite store: conversation CRUD, message append, message ordering, `updatedAt` bumping, cascade delete.
+- **FR-58** Unit tests MUST cover the SSE parser on the client side: event-type dispatch, malformed-line tolerance, reconnect on dropped connection.
+- **FR-59** Route tests (via `fastify.inject`) MUST cover:
   - `POST /api/sessions` creates and returns the new session.
   - `GET /api/sessions/:id/messages` returns the full history.
   - `POST /api/chat/stream` emits the expected SSE event sequence for a stubbed OpenAI stream.
@@ -150,8 +154,8 @@ After this phase:
   - `GET /api/upload/progress` emits `event: idle` when no upload is in flight.
   - `GET /api/health` returns the same shape the old `/health` did.
   - The SPA fallback handler returns `index.html` for unknown page routes and 404 JSON for unknown `/api/*` routes.
-- **FR-59** Component tests (`@testing-library/preact` + `vitest`) MUST cover `Composer` (Enter sends, Shift+Enter newline, autosize), `Sidebar` (session list, switching, +), `Bubble` (token append, source chip render), and `QueueRow` (progress updates).
-- **FR-60** E2E test MUST verify the upload → chat flow against the running Docker stack: upload a sample markdown via `POST /api/upload`, ask a question about it via `POST /api/chat/stream`, see a streamed response with sources.
+- **FR-60** Component tests (`@testing-library/preact` + `vitest`) MUST cover `Composer` (Enter sends, Shift+Enter newline, autosize), `Sidebar` (session list, switching, +), `Bubble` (token append, source chip render), and `QueueRow` (progress updates).
+- **FR-61** E2E test MUST verify the upload → chat flow against the running Docker stack: upload a sample markdown via `POST /api/upload`, ask a question about it via `POST /api/chat/stream`, see a streamed response with sources.
 
 ## Non-functional requirements
 
@@ -211,7 +215,7 @@ The phase is done when **all** of the following are true:
 - **OQ-2** — SQLite driver: **`better-sqlite3`** (synchronous, MIT, the de-facto Node choice) vs **`node:sqlite`** (Node 22+ built-in experimental, no native build) vs **`sql.js`** (WASM, runs in-process, no native build, but slower for large DBs). **Recommendation: `better-sqlite3`.** Smallest, fastest, simplest.
 - **OQ-3** — SPA fallback rule: catch-all `setNotFoundHandler` returns `index.html` for non-`/api/*` GETs. Confirm that's OK vs. an allowlist of explicit SPA paths.
 - **OQ-4** — SessionId reuse: keep the existing regex `^[A-Za-z0-9_-]{1,64}$` (UUIDv4 fits), or relax it to allow spaces/punctuation? **Recommendation: keep the regex.** UUIDs are user-invisible; the regex is a defense-in-depth against injection.
-- **OQ-5** — Auto-title from first message: first 60 chars, ellipsised. OK?
+- **OQ-5** — Auto-title from first message: **LLM-generated 5–8 word title, async (post-`done` for stream, concurrent for sync)**. Falls back to a 60-char prefix of the user message if the LLM call fails. User-renamed sessions are not overwritten (FR-15b). OK?
 - **OQ-6** — Source-chip UX: inline drawer (recommended, in-place, no nav) vs separate route. **Recommendation: inline drawer.**
 - **OQ-7** — Topbar chunk-count: live from `/api/status`? Or drop the count entirely? **Recommendation: live from `/api/status`.** Trivial to add, makes the chrome honest.
 - **OQ-8** — "Single-server-executable" interpretation: **default = single Fastify process** (one `node dist/index.js` inside the app container). **Optional future path = true single binary** via `bun build --compile` (modern, fast, smaller) or `pkg` (mature, works with Node deps). The default satisfies the requirement; the binary path is a follow-up if/when distribution becomes a hard requirement.

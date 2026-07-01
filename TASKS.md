@@ -62,10 +62,10 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 
 ## T27 — ConversationStore
 
-- **Description:** Implement `services/conversations.ts`: `ConversationStore` class with `list`, `get`, `create`, `rename`, `delete`, `appendUserMessage`, `appendAssistantMessage`, `listMessages`, `autoTitle` (first 60 chars), `bumpUpdatedAt`. Cascade delete via FK.
-- **Maps to FR:** FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-14, FR-15, FR-16
+- **Description:** Implement `services/conversations.ts`: `ConversationStore` class with `list`, `get`, `create`, `rename`, `delete`, `appendUserMessage`, `appendAssistantMessage`, `listMessages`, `setGeneratedTitle` (respects FR-15b — only overwrites if current title is `"New chat"` or a generated prefix), `bumpUpdatedAt`. Cascade delete via FK.
+- **Maps to FR:** FR-7, FR-8, FR-9, FR-10, FR-11, FR-12, FR-13, FR-16
 - **Maps to design:** §Data model, §API surface > Internal
-- **Acceptance:** Unit tests against `:memory:` DB cover all CRUD paths, message ordering, cascade delete, auto-title ellipsisation, `updatedAt` bump on append.
+- **Acceptance:** Unit tests against `:memory:` DB cover all CRUD paths, message ordering, cascade delete, `setGeneratedTitle` rejects overwrite of user-renamed titles, `updatedAt` bump on append.
 - **Depends on:** T26
 - **Estimate:** M
 - **Status:** todo
@@ -108,14 +108,14 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Estimate:** M
 - **Status:** todo
 
-## T31 — OpenAI streaming wrapper (additive)
+## T31 — OpenAI streaming wrapper (additive) + title generator service
 
-- **Description:** Add `streamChatCompletionRaw(messages, signal)` to `services/openai-api-wrapper.ts`: yields `{text}` chunks from `openai.chat.completions.create({ stream: true }, { signal })`. Existing `createChatCompletion` stays for the non-streaming `/api/chat` endpoint.
-- **Maps to FR:** FR-19
-- **Maps to design:** §Key algorithms > OpenAI streaming wrapper
-- **Acceptance:** Unit test with a stubbed OpenAI async iterator asserts yields in order, abort signal propagates.
+- **Description:** Add `streamChatCompletionRaw(messages, signal)` to `services/openai-api-wrapper.ts`: yields `{text}` chunks from `openai.chat.completions.create({ stream: true }, { signal })`. Existing `createChatCompletion` stays for the non-streaming `/api/chat` endpoint. Also create `services/title-generator.ts` with `generateConversationTitle(userMsg, assistantMsg, signal)` (5–8 word title, low temperature, max_tokens 30, strips quotes/punctuation) and `fallbackTitle(userMsg)` (60-char user prefix with ellipsis).
+- **Maps to FR:** FR-14, FR-15, FR-15a, FR-15b, FR-20
+- **Maps to design:** §Key algorithms > OpenAI streaming wrapper, §Key algorithms > Title generator
+- **Acceptance:** Unit tests with stubbed OpenAI client assert: (a) stream yields chunks in order, abort signal propagates; (b) `generateConversationTitle` returns a 5–8 word string with quotes/punctuation stripped, falls back gracefully on 4xx/5xx; (c) `fallbackTitle` clamps to 60 chars with ellipsis.
 - **Depends on:** —
-- **Estimate:** S
+- **Estimate:** M
 - **Status:** todo
 
 ## T32 — Stream orchestrator
@@ -128,13 +128,13 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Estimate:** M
 - **Status:** todo
 
-## T33 — SSE route + client SSE parser
+## T33 — SSE route + client SSE parser + post-`done` title event
 
-- **Description:** Add `POST /api/chat/stream` route handler in `routes/chat.ts` using `streamChatCompletion`. Set SSE headers (`text/event-stream`, `X-Accel-Buffering: no`). Handle disconnect via `AbortController`. Add `web/src/services/stream.ts` (POST + ReadableStream SSE parser). Wire `Bubble.tsx` to render streamed tokens live; `Composer.tsx` to send via `openChatStream`. Persist completed assistant message.
-- **Maps to FR:** FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, FR-23, FR-24, FR-32, FR-33
-- **Maps to design:** §Key algorithms > SSE chat handler, §Key algorithms > SSE parser
-- **Acceptance:** Route test asserts event sequence. Disconnect simulation: `reply.raw.close()` mid-stream causes `AbortController.abort()` to be called. Client SSE parser test handles single + multiple + malformed frames.
-- **Depends on:** T32, T30
+- **Description:** Add `POST /api/chat/stream` route handler in `routes/chat.ts` using `streamChatCompletion`. Set SSE headers (`text/event-stream`, `X-Accel-Buffering: no`). Handle disconnect via `AbortController`. After `event: done`, fire off `generateConversationTitle` async; on completion emit `event: title` (best-effort — write to a closed stream is a no-op). Add `web/src/services/stream.ts` (POST + ReadableStream SSE parser) handling the new `title` event type without breaking on parse errors. Wire `Bubble.tsx` to render streamed tokens live; `Composer.tsx` to send via `openChatStream`; `Sidebar.tsx` to update a session's title on `event: title` (silently no-op if the session is no longer current). Persist completed assistant message. Update `POST /api/chat` (non-stream) to include a `title` field — concurrent LLM title gen awaited during the response.
+- **Maps to FR:** FR-14, FR-15, FR-15a, FR-15b, FR-18, FR-19, FR-20, FR-21, FR-22, FR-23, FR-24, FR-32, FR-33
+- **Maps to design:** §Key algorithms > SSE chat handler, §Key algorithms > Sync title delivery, §Key algorithms > SSE parser
+- **Acceptance:** Route test asserts event sequence including `event: title` after `event: done`. Disconnect simulation: `reply.raw.close()` mid-stream causes `AbortController.abort()` to be called AND the post-`done` title write is silently dropped (no error). Client SSE parser test handles single + multiple + malformed frames including the new `title` event. Sync `/api/chat` test asserts `title` is non-null in response.
+- **Depends on:** T32, T30, T31
 - **Estimate:** L
 - **Status:** todo
 
