@@ -1,0 +1,60 @@
+# syntax=docker/dockerfile:1.7
+#
+# DocKhoj's pre-baked Ollama image.
+#
+# Why a custom image: the upstream `ollama/ollama` image ships with zero
+# models and never auto-pulls anything. Until now DocKhoj relied on a manual
+# `npm run setup-ollama` step, but a fresh `docker compose up` against an
+# empty `ollama_data/` volume silently left every /chat, /search, and
+# /search/rag request failing with the 500 described in commit b24e02f's
+# history. Baking the embedding model into the image makes the stack
+# one-command self-bootstrapping: rebuild → up → working.
+#
+# The standard Ollama ENTRYPOINT is left untouched — runtime behavior is
+# identical to the upstream image; only `/root/.ollama/models/` differs.
+
+ARG OLLAMA_BASE=ollama/ollama:latest
+FROM ${OLLAMA_BASE}
+
+# Kept in sync with EMBEDDING_MODEL in docker-compose.yml / .env.example.
+# Override at build time, e.g.:
+#   docker build --build-arg EMBEDDING_MODEL=bge-m3 -f Dockerfile.ollama .
+# (When changing models, remember VECTOR_SIZE in the app's environment must
+# match the new model's output dimension, per README "Chunker design".)
+ARG EMBEDDING_MODEL=nomic-embed-text
+
+# `ollama pull` requires the daemon. Start it in the background, wait for it
+# to come up using only `bash` + the `ollama` CLI (the image ships without
+# curl/wget — see the runtime healthcheck in docker-compose.yml for the same
+# constraint), pull the model, then stop the daemon. Single RUN keeps the
+# layer shallow and leaves no daemon in the final image.
+RUN set -eux; \
+    ollama serve >/tmp/ollama-build.log 2>&1 & \
+    OLLAMA_PID=$!; \
+    for i in $(seq 1 60); do \
+        if ollama list >/dev/null 2>&1; then break; fi; \
+        sleep 1; \
+    done; \
+    if ! ollama list >/dev/null 2>&1; then \
+        echo "Ollama daemon did not become ready within 60s. Log:" >&2; \
+        cat /tmp/ollama-build.log >&2; \
+        kill "${OLLAMA_PID}" 2>/dev/null || true; \
+        exit 1; \
+    fi; \
+    ollama pull "${EMBEDDING_MODEL}"; \
+    kill "${OLLAMA_PID}"; \
+    wait "${OLLAMA_PID}" 2>/dev/null || true; \
+    rm -f /tmp/ollama-build.log
+
+# Sanity-check that the model landed where the runtime ENTRYPOINT looks for
+# it. We do this as a separate RUN against the filesystem so it doesn't
+# depend on a live daemon (we just killed it above). The default tag is
+# `latest`, so the manifest path is
+#   /root/.ollama/models/manifests/registry.ollama.ai/library/<model>/latest
+RUN set -eux; \
+    MANIFEST="/root/.ollama/models/manifests/registry.ollama.ai/library/${EMBEDDING_MODEL}/latest"; \
+    if [ ! -s "${MANIFEST}" ]; then \
+        echo "Build sanity check failed: expected '${MANIFEST}' to exist and be non-empty" >&2; \
+        ls -la /root/.ollama/models/manifests/registry.ollama.ai/library/ 2>&1 | sed 's/^/  /' >&2 || true; \
+        exit 1; \
+    fi

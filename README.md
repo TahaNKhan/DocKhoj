@@ -23,8 +23,10 @@ cp .env.example .env
 # 2. Spin up everything (Ollama + Qdrant + App)
 docker compose up -d
 
-# 3. Wait for Ollama to download the embedding model (~2-5 min first time)
-docker compose logs -f ollama
+# 3. First build pulls the embedding model into the DocKhoj ollama image
+#    (~2–5 min, ~274 MB). Subsequent builds reuse the image cache.
+docker compose build ollama       # only needed once / after dependency changes
+docker compose logs -f ollama    # to watch the first pull
 
 # 4. Check app is healthy
 curl http://localhost:3001/health
@@ -34,7 +36,7 @@ curl http://localhost:3001/health
 open http://localhost:3001
 ```
 
-**First start:** Ollama downloads the `nomic-embed-text` model on first boot. The app waits for Ollama's healthcheck before starting, so it will be patient.
+**First start:** the `nomic-embed-text` model is **baked into the `ollama` service image** at build time (see `Dockerfile.ollama`). You don't need to run `ollama pull` manually — `docker compose up` is enough.
 
 ---
 

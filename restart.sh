@@ -10,7 +10,7 @@ echo "Removing old containers..."
 docker rm -f dockhoj-app dockhoj-qdrant dockhoj-ollama 2>/dev/null || true
 
 echo "Removing old images..."
-docker rmi dockhoj-app doc-khoj-app doc-indexer-app 2>/dev/null || true
+docker rmi dockhoj-app doc-khoj-ollama doc-khoj-app doc-indexer-app 2>/dev/null || true
 
 echo "Building new image (includes public/ folder)..."
 docker compose build --no-cache

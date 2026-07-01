@@ -10,10 +10,21 @@ services:
     restart: unless-stopped
 
   ollama:
-    image: ollama/ollama:latest
+    # Built from Dockerfile.ollama. The embedding model is baked into the
+    # image at build time, so the standard `ollama/ollama:latest` upstream
+    # image is replaced with a deterministic DocKhoj-flavored one.
+    build:
+      context: .
+      dockerfile: Dockerfile.ollama
+    image: doc-khoj-ollama:latest
     container_name: dockhoj-ollama
-    volumes:
-      - ./ollama_data:/root/.ollama
+    # Note: no `./ollama_data:/root/.ollama` mount. The upstream trick was to
+    # persist pulled models across container restarts; with the model baked
+    # into the image, that role moves to image versioning. A bind mount here
+    # would *shadow* the baked model on first run (empty host dir overlays
+    # /root/.ollama inside the container), defeating the whole point. If you
+    # ever need to keep additional models beyond the embedded one, add a
+    # selective sub-mount instead — not the whole /root/.ollama.
     restart: unless-stopped
     healthcheck:
       # The ollama/ollama image ships only `ollama` and `bash` (no curl/wget),
@@ -64,4 +75,3 @@ services:
 
 volumes:
   qdrant_data:
-  ollama_data:
