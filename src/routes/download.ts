@@ -39,7 +39,7 @@ export async function downloadRoutes(
   const filesDir = options?.filesDir ?? DEFAULT_FILES_DIR;
   await fs.promises.mkdir(filesDir, { recursive: true });
 
-  fastify.get<{ Params: IParams }>('/download/:filename', async (request, reply) => {
+  fastify.get<{ Params: IParams }>('/api/download/:filename', async (request, reply) => {
     const { filename } = request.params;
     log.debug({ filename }, 'Received download request');
 

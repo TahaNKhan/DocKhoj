@@ -96,7 +96,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** All existing tests green after path updates. README "API endpoints" section reflects new paths. Old paths return 404 (not redirects).
 - **Depends on:** T28
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T30 — Wire SPA to /api/sessions
 

@@ -22,7 +22,7 @@ echo "Waiting for app to be healthy..."
 sleep 3
 
 for i in {1..10}; do
-    if curl -s http://localhost:3001/health > /dev/null 2>&1; then
+    if curl -s http://localhost:3001/api/health > /dev/null 2>&1; then
         echo "App is healthy!"
         exit 0
     fi

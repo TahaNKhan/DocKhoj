@@ -26,7 +26,7 @@ function mapHitForResponse(hit: DocumentChunk) {
 }
 
 export async function searchRoutes(fastify: FastifyInstance) {
-  fastify.get('/search', async (request, reply) => {
+  fastify.get('/api/search', async (request, reply) => {
     const { q, limit, fileName, fileType, expand } = request.query as {
       q?: string;
       limit?: string;
@@ -64,7 +64,7 @@ export async function searchRoutes(fastify: FastifyInstance) {
     }
   });
 
-  fastify.get('/search/rag', async (request, reply) => {
+  fastify.get('/api/search/rag', async (request, reply) => {
     const { q, limit, fileName, fileType, expand } = request.query as {
       q?: string;
       limit?: string;

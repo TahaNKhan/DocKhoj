@@ -1,4 +1,5 @@
 import { FastifyInstance } from 'fastify';
+import { EventEmitter } from 'node:events';
 import { pipeline } from 'stream/promises';
 import fs from 'fs/promises';
 import fsSync from 'fs';
@@ -13,12 +14,35 @@ import { truncateForLog, uploadLog as log } from '../utils/logger.js';
 const UPLOAD_DIR = './documents';
 const BATCH_SIZE = 10;
 
+// uploadBus — progress events for in-flight uploads. Subscribed by the
+// /api/upload/progress SSE handler (T35) and consumed by the SPA queue
+// rows (T36). The handler in T35 registers listeners; this file
+// publishes per-stage progress so the SSE handler can fan-out to any
+// number of connected clients.
+//
+// Event shape:
+//   { fileName, status: 'queued'|'embedding'|'ready'|'failed',
+//     progress: 0..100, chunksIndexed?: number, error?: string }
+export const uploadBus = new EventEmitter();
+
 interface ProcessUploadResult {
   status: 'success' | 'failed';
   fileName: string;
   fileId: string;
   chunksIndexed?: number;
   error?: string;
+}
+
+interface ProgressEvent {
+  fileName: string;
+  status: 'queued' | 'embedding' | 'ready' | 'failed';
+  progress: number;
+  chunksIndexed?: number;
+  error?: string;
+}
+
+function emit(event: ProgressEvent): void {
+  uploadBus.emit('file', event);
 }
 
 async function processUpload(
@@ -30,6 +54,8 @@ async function processUpload(
   const chunkMaxTokens = parseInt(process.env.CHUNK_MAX_TOKENS || '512');
   const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP_TOKENS || '64');
   const logPreview = parseInt(process.env.LOG_CHUNK_PREVIEW_CHARS || '200');
+
+  emit({ fileName, status: 'embedding', progress: 0 });
 
   try {
     const chunks = await chunkBlocks(parsed.blocks, {
@@ -76,11 +102,14 @@ async function processUpload(
 
         await upsertChunks(qdrantChunks);
         totalIndexed += qdrantChunks.length;
+        const pct = Math.floor((totalIndexed / chunks.length) * 100);
+        emit({ fileName, status: 'embedding', progress: pct, chunksIndexed: totalIndexed });
       } catch (err) {
         log.error({ err, batchStart }, 'Failed to process batch');
       }
     }
 
+    emit({ fileName, status: 'ready', progress: 100, chunksIndexed: totalIndexed });
     return {
       status: 'success',
       fileName,
@@ -90,6 +119,7 @@ async function processUpload(
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Embedding failed';
     log.error({ err, fileName }, 'Upload processing failed');
+    emit({ fileName, status: 'failed', progress: 0, error: message });
     return {
       status: 'failed',
       fileName,
@@ -121,7 +151,8 @@ async function saveUploadedFile(
 export async function uploadRoutes(fastify: FastifyInstance) {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
 
-  fastify.post('/upload', async (request, reply) => {
+  // POST /api/upload — single file (FR-25).
+  fastify.post('/api/upload', async (request, reply) => {
     log.info('Received upload request');
     const data = await request.file();
 
@@ -129,6 +160,8 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       log.warn('No file in request');
       return reply.status(400).send({ error: 'No file uploaded' });
     }
+
+    emit({ fileName: data.filename, status: 'queued', progress: 0 });
 
     let saved: { filePath: string; fileId: string; fileName: string; ext: string };
     try {
@@ -139,6 +172,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       });
     } catch (err) {
       log.error({ err }, 'Failed to save uploaded file');
+      emit({ fileName: data.filename, status: 'failed', progress: 0, error: 'Failed to save uploaded file' });
       return reply.status(500).send({ error: 'Failed to save uploaded file' });
     }
 
@@ -154,6 +188,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       log.error({ error, fileName }, 'Parse error');
       await fs.unlink(filePath).catch(() => {});
       const message = error instanceof Error ? error.message : 'Failed to parse file';
+      emit({ fileName, status: 'failed', progress: 0, error: message });
       return reply.status(400).send({ error: message });
     }
 
@@ -178,7 +213,8 @@ export async function uploadRoutes(fastify: FastifyInstance) {
     };
   });
 
-  fastify.post('/upload/batch', async (request, reply) => {
+  // POST /api/upload/batch — multi-file. Same uploadBus publishes.
+  fastify.post('/api/upload/batch', async (request, reply) => {
     log.info('Received batch upload request');
     const files: ProcessUploadResult[] = [];
 
@@ -194,6 +230,10 @@ export async function uploadRoutes(fastify: FastifyInstance) {
     }
 
     const fileParts = parts.filter((p) => p.type === 'file');
+
+    for (const part of fileParts) {
+      if (part.filename) emit({ fileName: part.filename, status: 'queued', progress: 0 });
+    }
 
     const concurrency = parseInt(process.env.EMBEDDING_CONCURRENCY || '4');
     const queue = [...fileParts];
@@ -219,6 +259,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
             fileId: '',
             error: 'Failed to save uploaded file',
           });
+          emit({ fileName: part.filename ?? 'unknown', status: 'failed', progress: 0, error: 'Failed to save uploaded file' });
           continue;
         }
 
@@ -238,6 +279,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
             fileId: saved.fileId,
             error: error instanceof Error ? error.message : 'Failed to process file',
           });
+          emit({ fileName: saved.fileName, status: 'failed', progress: 0, error: 'Failed to process file' });
         }
       }
     });
@@ -257,7 +299,10 @@ export async function uploadRoutes(fastify: FastifyInstance) {
     };
   });
 
-  fastify.get('/files', async () => {
+  // GET /api/files — list uploaded internal filenames (used by
+  // existing tests; not in the spec's HTTP table but kept under /api/
+  // for convention).
+  fastify.get('/api/files', async () => {
     return fsSync.readdirSync(UPLOAD_DIR).map((s) => ({ filePath: s }));
   });
 

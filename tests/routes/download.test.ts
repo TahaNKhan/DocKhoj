@@ -21,7 +21,7 @@ describe('GET /download/:filename', () => {
     await app.register(multipart);
     await app.register(downloadRoutes, { filesDir: FILES_DIR });
 
-    const res = await app.inject({ method: 'GET', url: '/download/..%2F..%2Fetc%2Fpasswd' });
+    const res = await app.inject({ method: 'GET', url: '/api/download/..%2F..%2Fetc%2Fpasswd' });
     expect(res.statusCode).toBe(404);
     await app.close();
   });
@@ -33,7 +33,7 @@ describe('GET /download/:filename', () => {
     await app.register(multipart);
     await app.register(downloadRoutes, { filesDir: FILES_DIR });
 
-    const res = await app.inject({ method: 'GET', url: `/download/${filename}` });
+    const res = await app.inject({ method: 'GET', url: `/api/download/${filename}` });
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toContain('text/markdown');
     expect(res.body).toContain('# hello');
@@ -48,7 +48,7 @@ describe('GET /download/:filename', () => {
     await app.register(multipart);
     await app.register(downloadRoutes, { filesDir: FILES_DIR });
 
-    const res = await app.inject({ method: 'GET', url: `/download/${filename}` });
+    const res = await app.inject({ method: 'GET', url: `/api/download/${filename}` });
     expect(res.headers['content-type']).toContain('application/pdf');
 
     await app.close();
@@ -61,7 +61,7 @@ describe('GET /download/:filename', () => {
     await app.register(multipart);
     await app.register(downloadRoutes, { filesDir: FILES_DIR });
 
-    const res = await app.inject({ method: 'GET', url: `/download/${filename}` });
+    const res = await app.inject({ method: 'GET', url: `/api/download/${filename}` });
     expect(res.headers['content-type']).toContain(
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
     );
@@ -76,7 +76,7 @@ describe('GET /download/:filename', () => {
     await app.register(multipart);
     await app.register(downloadRoutes, { filesDir: FILES_DIR });
 
-    const res = await app.inject({ method: 'GET', url: `/download/${filename}` });
+    const res = await app.inject({ method: 'GET', url: `/api/download/${filename}` });
     expect(res.headers['content-type']).toContain('application/octet-stream');
 
     await app.close();
@@ -87,7 +87,7 @@ describe('GET /download/:filename', () => {
     await app.register(multipart);
     await app.register(downloadRoutes, { filesDir: FILES_DIR });
 
-    const res = await app.inject({ method: 'GET', url: '/download/missing.md' });
+    const res = await app.inject({ method: 'GET', url: '/api/download/missing.md' });
     expect(res.statusCode).toBe(404);
 
     await app.close();

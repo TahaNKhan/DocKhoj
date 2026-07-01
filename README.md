@@ -29,7 +29,7 @@ docker compose build ollama       # only needed once / after dependency changes
 docker compose logs -f ollama    # to watch the first pull
 
 # 4. Check app is healthy
-curl http://localhost:3001/health
+curl http://localhost:3001/api/health
 # {"status":"ok","ollama":true}
 
 # 5. Open the UI
@@ -70,7 +70,7 @@ Open http://localhost:3001
 - 🔍 Vector similarity search with **filters** (`fileName`, `fileType`) and **structured metadata** on every chunk (`headingPath`, `pageNumber`, `blockKind`)
 - 🧱 Token-aware, **structurally-aware chunker** — never splits a code fence or a single list item, carries heading paths through to citations
 - ✂️ Optional **semantic splitting** for long uniform sections (on by default; uses extra embedding calls)
-- 🧩 Server-side **context expansion** with `expand=siblings` or `expand=sections` on `/search`, `/search/rag`, and `/chat`
+- 🧩 Server-side **context expansion** with `expand=siblings` or `expand=sections` on `/api/search`, `/api/search/rag`, and `/api/chat`
 - 💬 RAG-powered Q&A with citations
 - 🛡️ Path-traversal-safe download endpoint with correct MIME types
 - 🧹 DOMPurify-sanitized LLM responses (XSS-safe)
@@ -84,7 +84,7 @@ Open http://localhost:3001
 
 ### Upload a file
 ```bash
-curl -X POST http://localhost:3001/upload \
+curl -X POST http://localhost:3001/api/upload \
   -F "file=@document.pdf"
 ```
 
@@ -95,14 +95,14 @@ Response:
 
 ### Vector search
 ```bash
-curl "http://localhost:3001/search?q=what%20is%20the%20project%20about&limit=5&fileName=notes.md"
+curl "http://localhost:3001/api/search?q=what%20is%20the%20project%20about&limit=5&fileName=notes.md"
 ```
 
 Each result includes `text`, `fileName`, `fileType`, `filePath`, `chunkIndex`, `headingPath[]`, `pageNumber`, `blockKind`, and `score`.
 
 ### Vector search with context expansion
 ```bash
-curl "http://localhost:3001/search?q=section%203.2&expand=sections"
+curl "http://localhost:3001/api/search?q=section%203.2&expand=sections"
 # expand=none | siblings | sections   (default: none)
 ```
 
@@ -110,25 +110,25 @@ curl "http://localhost:3001/search?q=section%203.2&expand=sections"
 
 ### RAG search (returns answer + sources)
 ```bash
-curl "http://localhost:3001/search/rag?q=what%20is%20the%20project%20about&expand=sections"
+curl "http://localhost:3001/api/search/rag?q=what%20is%20the%20project%20about&expand=sections"
 ```
 
 ### Chat with context
 ```bash
-curl -X POST http://localhost:3001/chat \
+curl -X POST http://localhost:3001/api/chat \
   -H "Content-Type: application/json" \
   -d '{"q": "what was discussed in the meeting?", "sessionId": "optional-id", "expand": "sections"}'
 ```
 
 ### Download an uploaded file
 ```bash
-curl -OJ "http://localhost:3001/download/<internal-filename>"
+curl -OJ "http://localhost:3001/api/download/<internal-filename>"
 ```
 Returns the file with the correct `Content-Type` based on extension. Path traversal attempts return 404.
 
 ### Health check
 ```bash
-curl http://localhost:3001/health
+curl http://localhost:3001/api/health
 # {"status":"ok","ollama":true}
 ```
 

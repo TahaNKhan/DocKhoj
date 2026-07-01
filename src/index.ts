@@ -9,6 +9,7 @@ import { searchRoutes } from './routes/search.js';
 import { chatRoutes } from './routes/chat.js';
 import { downloadRoutes } from './routes/download.js';
 import { sessionRoutes } from './routes/api-sessions.js';
+import { healthRoutes } from './routes/api-health.js';
 import { initCollection } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
@@ -35,12 +36,12 @@ export async function buildApp() {
   });
 
   fastify.addHook('onRequest', async (request) => {
-    if (request.url === '/health' || request.url.startsWith('/static')) return;
+    if (request.url === '/api/health' || request.url.startsWith('/static')) return;
     log.info({ method: request.method, url: request.url }, 'Incoming request');
   });
 
   fastify.addHook('onResponse', async (request, reply) => {
-    if (request.url === '/health' || request.url.startsWith('/static')) return;
+    if (request.url === '/api/health' || request.url.startsWith('/static')) return;
     log.info(
       {
         method: request.method,
@@ -74,10 +75,8 @@ export async function buildApp() {
   fastify.decorate('db', openDb());
   await fastify.register(sessionRoutes);
 
-  fastify.get('/health', async () => {
-    const ollama = await isOllamaAvailable();
-    return { status: 'ok', ollama };
-  });
+  // /api/health (moved from /health per FR-1 / FR-52).
+  await fastify.register(healthRoutes);
 
   return fastify;
 }

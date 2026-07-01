@@ -78,7 +78,7 @@ describe('POST /upload', () => {
 
     const res = await app.inject({
       method: 'POST',
-      url: '/upload',
+      url: '/api/upload',
       headers: { 'content-type': 'multipart/form-data; boundary=x' },
       payload: Buffer.from('--x--\r\n'),
     });
@@ -95,7 +95,7 @@ describe('POST /upload', () => {
     const md = '# Hello\n\nWorld.';
     const res = await app.inject({
       method: 'POST',
-      url: '/upload',
+      url: '/api/upload',
       ...fakeMultipart('test.md', md),
     });
 
@@ -128,7 +128,7 @@ describe('GET /files', () => {
 
     await fs.writeFile(path.join(TEMP_DIR, 'documents', 'a.md'), '# a');
 
-    const res = await app.inject({ method: 'GET', url: '/files' });
+    const res = await app.inject({ method: 'GET', url: '/api/files' });
     expect(res.statusCode).toBe(200);
     const files = res.json();
     expect(files.some((f: { filePath: string }) => f.filePath === 'a.md')).toBe(true);

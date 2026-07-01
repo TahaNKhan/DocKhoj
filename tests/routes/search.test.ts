@@ -67,7 +67,7 @@ describe('GET /search', () => {
   it('returns 400 when "q" is missing', async () => {
     const app = Fastify();
     await app.register(searchRoutes);
-    const res = await app.inject({ method: 'GET', url: '/search' });
+    const res = await app.inject({ method: 'GET', url: '/api/search' });
     expect(res.statusCode).toBe(400);
     await app.close();
   });
@@ -77,7 +77,7 @@ describe('GET /search', () => {
     const app = Fastify();
     await app.register(searchRoutes);
 
-    const res = await app.inject({ method: 'GET', url: '/search?q=hello' });
+    const res = await app.inject({ method: 'GET', url: '/api/search?q=hello' });
     expect(res.statusCode).toBe(200);
     const body = res.json();
     expect(body.results).toHaveLength(1);
@@ -95,7 +95,7 @@ describe('GET /search', () => {
 
     await app.inject({
       method: 'GET',
-      url: '/search?q=hello&fileName=notes.md&fileType=.md',
+      url: '/api/search?q=hello&fileName=notes.md&fileType=.md',
     });
 
     const callArgs = mockSearchChunks.mock.calls[0];
@@ -109,7 +109,7 @@ describe('GET /search', () => {
     const app = Fastify();
     await app.register(searchRoutes);
 
-    const res = await app.inject({ method: 'GET', url: '/search?q=hello&expand=sections' });
+    const res = await app.inject({ method: 'GET', url: '/api/search?q=hello&expand=sections' });
     expect(res.json().expandMode).toBe('sections');
 
     await app.close();
@@ -120,7 +120,7 @@ describe('GET /search/rag', () => {
   it('returns 400 when "q" is missing', async () => {
     const app = Fastify();
     await app.register(searchRoutes);
-    const res = await app.inject({ method: 'GET', url: '/search/rag' });
+    const res = await app.inject({ method: 'GET', url: '/api/search/rag' });
     expect(res.statusCode).toBe(400);
     await app.close();
   });
@@ -129,7 +129,7 @@ describe('GET /search/rag', () => {
     mockSearchChunks.mockResolvedValueOnce([]);
     const app = Fastify();
     await app.register(searchRoutes);
-    const res = await app.inject({ method: 'GET', url: '/search/rag?q=hello' });
+    const res = await app.inject({ method: 'GET', url: '/api/search/rag?q=hello' });
     expect(res.statusCode).toBe(200);
     expect(res.json().answer).toContain('No relevant documents');
     await app.close();
