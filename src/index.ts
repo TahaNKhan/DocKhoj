@@ -8,6 +8,7 @@ import { uploadRoutes } from './routes/upload.js';
 import { searchRoutes } from './routes/search.js';
 import { chatRoutes } from './routes/chat.js';
 import { downloadRoutes } from './routes/download.js';
+import { sessionRoutes } from './routes/api-sessions.js';
 import { initCollection } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
@@ -66,6 +67,12 @@ export async function buildApp() {
   await fastify.register(searchRoutes);
   await fastify.register(chatRoutes);
   await fastify.register(downloadRoutes);
+
+  // SQLite-backed sessions routes. The sessionId regex (^[A-Za-z0-9_-]{1,64}$)
+  // is enforced both here and at the ConversationStore layer for defense
+  // in depth.
+  fastify.decorate('db', openDb());
+  await fastify.register(sessionRoutes);
 
   fastify.get('/health', async () => {
     const ollama = await isOllamaAvailable();

@@ -68,7 +68,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Unit tests against `:memory:` DB cover all CRUD paths, message ordering, cascade delete, `setGeneratedTitle` rejects overwrite of user-renamed titles, `updatedAt` bump on append.
 - **Depends on:** T26
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T28 — Sessions routes
 
@@ -78,7 +78,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Route tests via `fastify.inject` cover each endpoint's happy path + 404 + validation. Sidebar reload test: list returns most-recently-updated first.
 - **Depends on:** T27
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T29 — Path migration cut (existing endpoints → /api/*)
 

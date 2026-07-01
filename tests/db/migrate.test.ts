@@ -41,12 +41,13 @@ describe('migrate', () => {
     expect(after).toHaveLength(1);
   });
 
-  it('applies 001_init.sql and records the version', () => {
+  it('applies 001_init.sql and 002_title_source.sql and records both versions', () => {
     const result = migrate(db);
     expect(result.applied).toContain(1);
+    expect(result.applied).toContain(2);
 
     const rows = db.prepare('SELECT id FROM _migrations ORDER BY id').all() as { id: number }[];
-    expect(rows.map((r) => r.id)).toEqual([1]);
+    expect(rows.map((r) => r.id)).toEqual([1, 2]);
 
     const conversations = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'")
@@ -57,6 +58,9 @@ describe('migrate', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='messages'")
       .all();
     expect(messages).toHaveLength(1);
+
+    const cols = db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[];
+    expect(cols.map((c) => c.name)).toContain('title_source');
   });
 
   it('is idempotent — second boot is a no-op', () => {
