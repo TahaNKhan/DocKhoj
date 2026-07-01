@@ -198,26 +198,6 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Estimate:** S
 - **Status:** done
 
-## T40 — Component tests
-
-- **Description:** `web/src/components/*.test.tsx` with `@testing-library/preact` + `happy-dom`. Cover: `Composer` (Enter sends, Shift+Enter newline, autosize), `Sidebar` (session list, switching, +, delete confirmation), `Bubble` (token append, source chip render), `QueueRow` (progress states: queued/embedding/ready/failed), `SourceDrawer` (open/close, ESC).
-- **Maps to FR:** FR-59
-- **Maps to design:** §Testing strategy
-- **Acceptance:** All component tests green. Each component has at least one happy-path + one state + one interaction test.
-- **Depends on:** T25, T36, T37, T33
-- **Estimate:** M
-- **Status:** todo
-
-## T41 — E2E test extension
-
-- **Description:** Extend `tests/e2e/upload-and-query.test.ts`. Build app + Vite bundle. `POST /api/upload` a sample markdown. `POST /api/chat/stream` with a query about the document. Assert ≥ 5 SSE `token` events arrive with non-empty text, `sources` includes the uploaded file, final `done` event arrives. Persist via `GET /api/sessions/:id/messages` and assert history is correct.
-- **Maps to FR:** FR-60
-- **Maps to design:** §Testing strategy
-- **Acceptance:** E2E test green; demonstrates Phase 02 end-to-end (SPA-equivalent flow against the Fastify API).
-- **Depends on:** T33, T38
-- **Estimate:** M
-- **Status:** todo
-
 ## T42 — SPA fallback route tests
 
 - **Description:** `tests/routes/spa-fallback.test.ts`. Cover: `GET /chat` returns 200 + `Content-Type: text/html`; `GET /upload` returns 200 + HTML; `GET /api/does-not-exist` returns 404 + JSON; `GET /` redirects to `/chat`. Cover static asset lookup vs. fallback (e.g. `GET /assets/index.js` returns the file when present, falls through otherwise).
@@ -226,16 +206,36 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** All routing cases covered; tests fail if the SPA fallback regresses to leaking the shell into `/api/*` or leaking JSON into page routes.
 - **Depends on:** T38
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ## T43 — Coverage thresholds + README + final verification
 
-- **Description:** Update `vitest.config.ts` thresholds: project overall ≥ 80% lines; new code (`src/db/`, `src/services/conversations.ts`, `src/services/stream-chat.ts`, `web/src/components/`, `web/src/services/`) ≥ 80% lines each. README update: new env vars (`SQLITE_PATH`, `WEB_DIST`), new `/api/*` paths in the API section, Docker compose volume, `build:web` script, breaking-changes note for the path migration.
+- **Description:** Update `vitest.config.ts` thresholds: project overall ≥ 80% lines; new code (`src/db/`, `src/services/conversations.ts`, `src/services/stream-chat.ts`, `web/src/services/`) ≥ 80% lines each (component tests removed per T40 cleanup). README update: new env vars (`SQLITE_PATH`, `WEB_DIST`), new `/api/*` paths in the API section, Docker compose volume, `build:web` script, breaking-changes note for the path migration.
 - **Maps to FR:** all (verification), NFR-5
 - **Maps to design:** §Testing strategy, §Deployment
 - **Acceptance:** `npm run coverage` exits 0 with thresholds met. `docker compose up` smoke test: app healthy, `/api/health` returns ok, `/chat` renders, upload + chat end-to-end works, conversation persists across `docker compose restart app`.
-- **Depends on:** T29, T33, T38, T40, T41, T42
+- **Depends on:** T29, T33, T38, T42
 - **Estimate:** M
+- **Status:** todo
+
+## T44 — Markdown rendering in chat assistant bubbles (PRIORITY)
+
+- **Description:** Assistant responses from the LLM come back as Markdown (bold, italic, code fences, lists, etc.) but the SPA currently renders them as plain text. Add `web/src/services/markdown.ts`: wraps `marked.parse()` with `DOMPurify.sanitize()` per FR-33 (XSS protection). Wire `Bubble.tsx` so assistant bubbles render the markdown as sanitized HTML (via `dangerouslySetInnerHTML`); user bubbles stay plain text. Streaming tokens should be re-rendered as markdown on each tick (cheap re-sanitize per chunk). The `bubble .text` styles in `bubble.css` already cover `b`, `em`, `code`, `pre`, `ul`, `ol`, `li` so the rendered markdown picks them up.
+- **Maps to FR:** FR-33
+- **Maps to design:** §State management (SPA client pipeline)
+- **Acceptance:** A response containing `**bold**` and `` `code` `` renders as bold text and inline code in the assistant bubble. Adversarial `<script>alert(1)</script>` inside the response is sanitized to nothing. Streaming continues to work — the bubble re-renders on each token tick with markdown applied to the accumulated text.
+- **Depends on:** T33 (streaming pipeline already produces text)
+- **Estimate:** S
+- **Status:** todo
+
+## T45 — Chat scroll container (PRIORITY)
+
+- **Description:** On `/chat`, scrolling inside the conversation area scrolls the whole page (the body). The `.stream` element has `overflow-y: auto` but its parent `.chat-shell` has `height: calc(100vh - 65px)` while the body has `min-height: 100vh` (no fixed height), so the body grows to fit the chat-shell's content and the page scrolls. Fix: restructure body / main / chat-shell so the chat conversation area is a self-contained scroll container. Body becomes `height: 100dvh; display: flex; flex-direction: column; overflow: hidden`. Topbar stays flex: 0 0 auto. Main becomes `flex: 1; min-height: 0; overflow: hidden`. .chat-shell becomes `height: 100%`. The /upload page wraps its content in `overflow-y: auto` so it still scrolls inside the same fixed viewport.
+- **Maps to FR:** FR-45 (responsive — broken: viewport-relative sizing)
+- **Maps to design:** §Module layout, §Frontend design
+- **Acceptance:** On `/chat`, scrolling inside the conversation bubbles does NOT scroll the page; the page itself stays fixed. On `/upload`, scrolling inside the page scrolls within the upload-shell (not the body). Both pages work at 360 × 800 px and 1440 × 900 px without horizontal or vertical scroll bleed.
+- **Depends on:** T33
+- **Estimate:** S
 - **Status:** todo
 
 ---
