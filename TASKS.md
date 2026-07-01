@@ -216,7 +216,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** `npm run coverage` exits 0 with thresholds met. `docker compose up` smoke test: app healthy, `/api/health` returns ok, `/chat` renders, upload + chat end-to-end works, conversation persists across `docker compose restart app`.
 - **Depends on:** T29, T33, T38, T42
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T44 — Markdown rendering in chat assistant bubbles (PRIORITY)
 

@@ -12,6 +12,8 @@ DocKhoj is a self-hosted document indexing and RAG search tool. It helps you upl
 - **Fastify** web server with multipart uploads and graceful shutdown
 - **gpt-tokenizer** (cl100k_base) for token-aware chunk sizing
 - **unified + remark-parse + remark-gfm** for markdown structure
+- **Preact + Vite** SPA (`web/`) — markdown-rendered chat bubbles, live streaming, upload progress
+- **better-sqlite3** for conversations + message persistence (with WAL + FK)
 
 ## Quick Start (Docker)
 
@@ -50,13 +52,14 @@ open http://localhost:3001
 
 ```bash
 npm install
+npm --prefix web install
 cp .env.example .env
 # Edit .env with your OPENAI_API_KEY
 
 # Start Qdrant and Ollama
 docker compose up -d qdrant ollama
 
-# Run the app
+# Run the app (server + web SPA in parallel)
 npm run dev
 ```
 
@@ -71,66 +74,112 @@ Open http://localhost:3001
 - 🧱 Token-aware, **structurally-aware chunker** — never splits a code fence or a single list item, carries heading paths through to citations
 - ✂️ Optional **semantic splitting** for long uniform sections (on by default; uses extra embedding calls)
 - 🧩 Server-side **context expansion** with `expand=siblings` or `expand=sections` on `/api/search`, `/api/search/rag`, and `/api/chat`
-- 💬 RAG-powered Q&A with citations
+- 💬 RAG-powered Q&A with citations, **streaming tokens** via SSE
+- 🧠 Markdown rendering in assistant bubbles (sanitized via DOMPurify — XSS-safe per FR-33)
+- 💾 Persistent conversations in SQLite — survives container restarts
 - 🛡️ Path-traversal-safe download endpoint with correct MIME types
-- 🧹 DOMPurify-sanitized LLM responses (XSS-safe)
 - ⚡ Bounded-parallel embedding via `p-limit` and exponential-backoff retry
 - 🧯 Graceful shutdown on SIGTERM/SIGINT
-- 📊 Per-file batch status; failed uploads don't block the rest
 
 ---
 
 ## API Endpoints
 
-### Upload a file
+All routes are under `/api/*`. Page routes (`/chat`, `/upload`) are served by the SPA.
+
+### Sessions & messages
+
 ```bash
-curl -X POST http://localhost:3001/api/upload \
-  -F "file=@document.pdf"
+# List all conversations (most-recently-updated first)
+curl http://localhost:3001/api/sessions
+
+# Create a new conversation
+curl -X POST http://localhost:3001/api/sessions
+
+# Fetch one conversation
+curl http://localhost:3001/api/sessions/<id>
+
+# Fetch all messages in a conversation
+curl http://localhost:3001/api/sessions/<id>/messages
+
+# Rename a conversation (sets title_source = 'user' so LLM can't overwrite)
+curl -X PATCH http://localhost:3001/api/sessions/<id> \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"My Project Plan"}'
+
+# Delete a conversation (cascades to messages via FK)
+curl -X DELETE http://localhost:3001/api/sessions/<id>
 ```
 
-Response:
-```json
-{ "success": true, "fileName": "document.pdf", "chunksIndexed": 42, "fileId": "..." }
+`sessionId` is constrained to `^[A-Za-z0-9_-]{1,64}$`.
+
+### Chat
+
+```bash
+# Non-streaming chat with a session (returns full answer + title)
+curl -X POST http://localhost:3001/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"q":"what was discussed in the meeting?","sessionId":"<id>","expand":"sections"}'
+
+# Streaming chat (SSE — events: meta, sources, token*, done, title)
+curl -N -X POST http://localhost:3001/api/chat/stream \
+  -H 'Content-Type: application/json' \
+  -d '{"q":"hello","sessionId":"<id>"}'
 ```
 
-### Vector search
+### Search
+
 ```bash
+# Vector search
 curl "http://localhost:3001/api/search?q=what%20is%20the%20project%20about&limit=5&fileName=notes.md"
-```
 
-Each result includes `text`, `fileName`, `fileType`, `filePath`, `chunkIndex`, `headingPath[]`, `pageNumber`, `blockKind`, and `score`.
+# RAG search (returns answer + sources)
+curl "http://localhost:3001/api/search/rag?q=what%20is%20the%20project%20about&expand=sections"
 
-### Vector search with context expansion
-```bash
-curl "http://localhost:3001/api/search?q=section%203.2&expand=sections"
 # expand=none | siblings | sections   (default: none)
 ```
 
 `expand=sections` returns all chunks in the same `headingPath`; `expand=siblings` returns neighbors ±2.
 
-### RAG search (returns answer + sources)
+### Upload
+
 ```bash
-curl "http://localhost:3001/api/search/rag?q=what%20is%20the%20project%20about&expand=sections"
+# Upload a single file
+curl -X POST http://localhost:3001/api/upload -F "file=@document.pdf"
+# -> {"success":true,"fileName":"document.pdf","chunksIndexed":42,"fileId":"..."}
+
+# Live upload progress (SSE — events: file, idle)
+curl -N http://localhost:3001/api/upload/progress
 ```
 
-### Chat with context
-```bash
-curl -X POST http://localhost:3001/api/chat \
-  -H "Content-Type: application/json" \
-  -d '{"q": "what was discussed in the meeting?", "sessionId": "optional-id", "expand": "sections"}'
-```
+### Download
 
-### Download an uploaded file
 ```bash
 curl -OJ "http://localhost:3001/api/download/<internal-filename>"
 ```
+
 Returns the file with the correct `Content-Type` based on extension. Path traversal attempts return 404.
 
-### Health check
+### Status & health
+
 ```bash
+# Health check (used by Docker HEALTHCHECK)
 curl http://localhost:3001/api/health
-# {"status":"ok","ollama":true}
+# -> {"status":"ok","ollama":true}
+
+# Live chunk count + Ollama reachability (for the TopBar status indicator)
+curl http://localhost:3001/api/status
+# -> {"chunks":298,"ollamaAvailable":true}
 ```
+
+### SPA pages
+
+```bash
+curl -sI http://localhost:3001/chat     # 200 text/html
+curl -sI http://localhost:3001/upload   # 200 text/html
+```
+
+Any other non-`/api/*` path falls back to the SPA's `index.html`.
 
 ---
 
@@ -147,6 +196,8 @@ curl http://localhost:3001/api/health
 | `QDRANT_COLLECTION` | `documents` | Qdrant collection name |
 | `VECTOR_SIZE` | `768` | Embedding vector dimension |
 | `PORT` | `3001` | Server port |
+| `SQLITE_PATH` | `/app/data/conversations.db` | SQLite file for conversations + messages (mounted from the `conversations_data` Docker volume) |
+| `WEB_DIST` | `<repo>/web/dist` | Path to the built SPA. The server falls back to this directory when serving non-`/api/*` routes. |
 | `CHUNK_MAX_TOKENS` | `512` | Max tokens per chunk |
 | `CHUNK_OVERLAP_TOKENS` | `64` | Overlap tokens at chunk boundaries |
 | `CHUNK_MIN_TOKENS` | `32` | Trailing chunks smaller than this are merged |
@@ -155,7 +206,74 @@ curl http://localhost:3001/api/health
 | `CHAT_HISTORY_MAX_TURNS` | `20` | Conversation history cap per session |
 | `LOG_CHUNK_PREVIEW_CHARS` | `200` | Truncate logged chunk text to this many characters |
 
-`sessionId` is constrained to `^[A-Za-z0-9_-]{1,64}$` and defaults to `"default"`.
+---
+
+## Breaking changes from Phase 01 → Phase 02
+
+The Phase 02 cutover moved every JSON API under `/api/*`. If you're upgrading from a Phase 01 deployment, your existing scripts and integrations need the following path updates:
+
+| Phase 01 path | Phase 02 path |
+|---|---|
+| `POST /chat` | `POST /api/chat` |
+| `POST /api/chat/stream` | unchanged (added in Phase 02) |
+| `GET /search` | `GET /api/search` |
+| `GET /search/rag` | `GET /api/search/rag` |
+| `POST /upload` | `POST /api/upload` |
+| `GET /upload/progress` | `GET /api/upload/progress` (added in Phase 02) |
+| `GET /download/:filename` | `GET /api/download/:filename` |
+| `GET /health` | `GET /api/health` |
+| `GET /status` | `GET /api/status` (added in Phase 02) |
+| n/a | `POST /api/sessions` (added in Phase 02) |
+| n/a | `GET /api/sessions` (added in Phase 02) |
+| n/a | `GET /api/sessions/:id/messages` (added in Phase 02) |
+| n/a | `PATCH /api/sessions/:id` (added in Phase 02) |
+| n/a | `DELETE /api/sessions/:id` (added in Phase 02) |
+
+The old paths return 404 JSON (no redirects). The SPA itself runs under `/` (and serves `/chat` and `/upload`), so the UI URL is unchanged.
+
+Phase 02 also adds a `conversations_data` Docker volume mounted at `/app/data` for SQLite persistence — the previous in-memory `Map`-backed conversations no longer survive container restarts.
+
+---
+
+## Docker Compose
+
+The stack consists of three services (`app`, `ollama`, `qdrant`). Two named volumes persist data across `docker compose down`:
+
+```yaml
+volumes:
+  conversations_data:    # → /app/data  (SQLite)
+  ollama_data:           # → embedding model cache
+  qdrant_data:           # → vector store
+```
+
+Bind-mount the source if you're iterating on the code:
+
+```bash
+# Live-reload the Fastify server
+docker compose up app ollama qdrant
+# In another terminal:
+npm run dev:server    # tsx watch the server in your host node
+
+# Live-reload the SPA
+npm --prefix web run dev    # Vite serves on :5173
+```
+
+---
+
+## NPM Scripts
+
+| Script | What it does |
+|---|---|
+| `npm run dev` | Run server + SPA together (concurrently) |
+| `npm run dev:server` | Server only (tsx watch) |
+| `npm run dev:web` | SPA only (Vite) |
+| `npm run build` | `build:server` + `build:web` |
+| `npm run build:server` | TypeScript build + asset copy |
+| `npm run build:web` | Install SPA deps + Vite single-file build → `web/dist/` |
+| `npm start` | Run the compiled server (`dist/index.js`) |
+| `npm test` | Run all vitest projects |
+| `npm run coverage` | Run vitest with v8 coverage (fails if thresholds unmet) |
+| `npm run setup-ollama` | `ollama pull nomic-embed-text` (local install only) |
 
 ---
 
@@ -184,6 +302,13 @@ src/
     embed.ts             Ollama embeddings with retry + parallel + real isOllamaAvailable
     qdrant.ts            client.query, payload indexes, filter builder, expandHits
     openai-api-wrapper.ts  Chat completions + RAG context preparation
+    conversations.ts     SQLite-backed ConversationStore (CRUD, title-source rules)
+    stream-chat.ts       Embed → search → prompt → token orchestrator (FR-17..20)
+    title-generator.ts   LLM-driven title generation with fallback (FR-14, FR-15)
+  db/
+    index.ts             better-sqlite3 singleton (WAL + FK), lazy dir create
+    migrate.ts           Hand-rolled migration runner (idempotent, sorted NNN_*.sql)
+    migrations/          001_init.sql, 002_title_source.sql
   utils/
     chunk-types.ts       ChunkOptions, Chunk, env defaults
     chunk-tokenizer.ts   countTokens + sentence splitter + abbreviation handling
@@ -192,17 +317,32 @@ src/
     chunk.ts             Public API: chunkBlocks / chunkText / chunkMarkdown
     logger.ts            Pino with per-component child loggers + truncateForLog
   routes/
-    upload.ts            Single + batch upload with per-file status and parallel embed
+    api-health.ts        GET  /api/health
+    api-status.ts        GET  /api/status (chunks + ollamaAvailable)
+    api-sessions.ts      POST/GET/PATCH/DELETE on /api/sessions[/:id[/messages]]
+    chat.ts              POST /api/chat (non-stream)
+    chat-stream.ts       POST /api/chat/stream (SSE)
+    upload.ts            POST /api/upload (publishes events to uploadBus)
+    upload-progress.ts   GET  /api/upload/progress (SSE)
+    search.ts            /api/search and /api/search/rag (filters + expand)
     download.ts          Path-traversal-safe file serving with MIME map
-    search.ts            Search + RAG with fileName/fileType filters and expand mode
-    chat.ts              Session-validated chat with bounded history and expand mode
+  server/
+    spa.ts               @fastify/static mount + SPA fallback for non-/api/*
   index.ts               Fastify app + graceful SIGTERM/SIGINT shutdown
 
+web/
+  src/
+    components/          Bubble, Composer, Dropzone, QueueRow, Sidebar, TopBar
+    routes/              Chat.tsx, Upload.tsx
+    services/            sessions.ts, stream.ts, markdown.ts
+    styles/              tokens.css, base.css, animations.css, bubble.css, ...
+  tests/                 vitest (happy-dom) — markdown, sessions, stream
+
 tests/
+  db/                    SQLite singleton + migration runner
   parser/                Markdown + text parser tests
-  services/              Embed, Qdrant, parser dispatcher, OpenAI wrapper
-  utils/                  Tokenizer, structural chunker, semantic-split, public chunk API
-  routes/                fastify.inject-based route tests
+  services/              Embed, Qdrant, parser dispatcher, OpenAI wrapper, stream-chat
+  routes/                fastify.inject-based route tests (api-health, upload, chat, search, spa-fallback)
   e2e/                   parse-and-chunk end-to-end
   test-helpers.ts        Shared mocks
 ```
@@ -220,11 +360,13 @@ tests/
 - **p-limit** - Bounded parallel embeddings
 - **mammoth** - DOCX text extraction
 - **pdf-parse** - PDF text extraction with per-page boundaries
+- **better-sqlite3** - Conversations + messages (WAL + FK cascade)
 - **pino** - Structured logging
 - **TypeScript** - Strict mode (`noImplicitAny`, `noUncheckedIndexedAccess`)
+- **Preact + Vite + vite-plugin-singlefile** - SPA bundled into a single `index.html`
+- **DOMPurify + marked** - Sanitized markdown rendering in chat bubbles
 - **Docker Compose** - One-command startup with Ollama healthcheck
 - **Vitest** - Test framework with coverage thresholds
-- **DOMPurify** - LLM response sanitization (CDN)
 
 ---
 
