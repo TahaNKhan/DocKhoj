@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-#cd /home/taha/.openclaw/workspace/doc-indexer
 
 echo "Stopping and removing containers..."
 docker compose down --remove-orphans
