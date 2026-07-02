@@ -86,6 +86,10 @@ function SessionRow({ session, active, onSelect, onRename, onDelete }: RowProps)
   const rel = relativeTime(session.updatedAt);
   const sources = session.messageCount > 0 ? `${session.messageCount} msgs` : 'empty';
 
+  // The × button is the discoverable delete surface; right-click is
+  // still wired for desktop power-users. The button sits in the
+  // top-right of the row, hidden on hover for desktop and always
+  // visible on touch (where hover doesn't exist).
   return (
     <div
       class={`session${active ? ' active' : ''}`}
@@ -105,6 +109,23 @@ function SessionRow({ session, active, onSelect, onRename, onDelete }: RowProps)
       <div class="s">
         {sources} · {rel}
       </div>
+      {onDelete && (
+        <button
+          class="x-del"
+          aria-label={`Delete session ${session.title}`}
+          title="Delete session"
+          onClick={(e) => {
+            // Stop the click from bubbling to the row's onSelect —
+            // tapping × shouldn't switch to this session first.
+            e.stopPropagation();
+            if (confirm(`Delete "${session.title}" and its messages?`)) {
+              onDelete(session.id);
+            }
+          }}
+        >
+          ×
+        </button>
+      )}
     </div>
   );
 }
