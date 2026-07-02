@@ -180,7 +180,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Component test: clicking a source chip opens the drawer with the right content. ESC closes. The drawer's "Open file" link points to `/api/download/...`.
 - **Depends on:** T25
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done
 
 ## T38 — SPA fallback + Dockerfile + docker-compose
 
