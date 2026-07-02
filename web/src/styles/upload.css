@@ -1,18 +1,48 @@
 /* Upload page — dropzone + queue.
  * Source: mockups/dockhoj-upload-v2.html, ported to the same
- * tokens/animations as the chat surface. */
+ * tokens/animations as the chat surface.
+ *
+ * Layout split (post-T45/T46): the body is pinned to the viewport
+ * (see base.css). The chat route owns its own scrolling inside
+ * `.stream`; the upload route needs an equivalent.
+ *
+ * Two-element pattern (T45b):
+ *   .upload-page  — full-viewport-width scroll wrapper. Owns the
+ *                   `overflow-y: auto` so the scrollbar lives at
+ *                   the screen edge instead of at the right edge of
+ *                   the centered content column (which on wide
+ *                   screens sits ~400px from the screen edge and
+ *                   looks like it's floating in the middle of the
+ *                   page).
+ *   .upload-shell — centered content column (max-width 1080px). NO
+ *                   scrolling here; it's just a layout container.
+ *
+ * The split keeps the T45 invariant intact: body stays pinned, each
+ * page owns its own scrolling, but the scrollbar is positioned at
+ * the viewport edge the way every other app does it. */
 
-.upload-shell {
-  /* T45: this is the upload page's own scroll container so the body
-     stays pinned to the viewport (see base.css body). */
+.upload-page {
+  /* Fill <main> below the TopBar. flex: 1 + min-height: 0 lets the
+     scroll container shrink correctly inside <main>'s flex column. */
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* The actual scrolling happens here. */
+  overflow-y: auto;
   position: relative;
   z-index: 2;
-  max-width: 1080px;
+}
+
+.upload-shell {
+  /* Centered content column. max-width caps the reading column on
+     ultra-wide monitors; width: 100% lets it shrink on narrow
+     viewports. No scrolling, no positioning — just layout. */
   width: 100%;
-  margin: 0 auto;
+  max-width: 1080px;
   padding: 56px var(--pad) 96px;
-  overflow-y: auto;
-  min-height: 0;
 }
 
 .page-head {

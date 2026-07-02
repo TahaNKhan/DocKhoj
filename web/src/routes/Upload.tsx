@@ -153,41 +153,43 @@ export function Upload() {
   }
 
   return (
-    <div class="upload-shell">
-      <div class="page-head">
-        <div class="l">
-          <div class="eyebrow">Ingest</div>
-          <h1>
-            Drop it in.
-            <br />
-            We'll <i>read</i> it for you.
-          </h1>
-          <p>
-            Drag a file, paste a URL, or point us at a folder. DocKhoj chunks,
-            embeds, and indexes — quietly, in the background.
-          </p>
+    <div class="upload-page">
+      <div class="upload-shell">
+        <div class="page-head">
+          <div class="l">
+            <div class="eyebrow">Ingest</div>
+            <h1>
+              Drop it in.
+              <br />
+              We'll <i>read</i> it for you.
+            </h1>
+            <p>
+              Drag a file, paste a URL, or point us at a folder. DocKhoj chunks,
+              embeds, and indexes — quietly, in the background.
+            </p>
+          </div>
+          <div class="r">
+            <b>{chunksIndexed === null ? '—' : chunksIndexed.toLocaleString()}</b>
+            chunks indexed
+          </div>
         </div>
-        <div class="r">
-          <b>{chunksIndexed === null ? '—' : chunksIndexed.toLocaleString()}</b>
-          chunks indexed
-        </div>
-      </div>
 
-      <Dropzone onFiles={enqueue} />
+        <Dropzone onFiles={enqueue} />
 
-      <div class="section">
-        <h3>
-          Queue <span class="count">{rows.length}</span>
-        </h3>
-        <div class="queue">
-          {rows.map((row) => (
-            <QueueRow key={row.id} row={row} onRemove={remove} />
-          ))}
-          {rows.length === 0 && (
-            <div class="queue-empty">
-              Drop a file above to start indexing.
-            </div>
-          )}
+        <div class="section">
+          <h3>
+            Queue <span class="count">{rows.length}</span>
+          </h3>
+          <div class="queue">
+            {rows.map((row) => (
+              <QueueRow key={row.id} row={row} onRemove={remove} />
+            ))}
+            {rows.length === 0 && (
+              <div class="queue-empty">
+                Drop a file above to start indexing.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
