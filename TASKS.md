@@ -146,7 +146,7 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Acceptance:** Topbar shows real chunk count and live dot. Route test returns the right shape.
 - **Depends on:** —
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done
 
 ## T35 — Upload progress event bus + SSE route
 
