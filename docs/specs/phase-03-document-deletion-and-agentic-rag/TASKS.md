@@ -276,6 +276,22 @@ Reported after Phase 03 was signed off. These are all bug-fixes / UX polish — 
 - **Estimate:** S
 - **Status:** done (this commit)
 
+### p3-T18 — De-dupe sources by file: one chip per doc, drawer lists chunks
+
+- **Description:** A question that pulls 15 chunks from `notes.md` currently renders 15 `notes.md` chips under the assistant bubble — the same file shows up 15 times, with a page number per chip. The user wants one chip per unique file, click → drawer that lists every chunk for that file. Group `Source[]` by `fileName` (and `filePath` to disambiguate docs that share a name with different on-disk basenames — not currently possible but future-proof), render one chip per group with a chunk count, and route the click to a new drawer mode that shows the chunk list with each chunk's page/score/heading-path. Selecting a chunk in the list swaps the rendered markdown below.
+- **Maps to FR:** FR-29 (existing — source drawer reuse), informal UX feedback after Phase 03 ship
+- **Maps to design:** §Source drawer (extended for multi-chunk view); new `DocSourceDrawer` component
+- **Acceptance:**
+  - When `sources.length === 0`: no chip row.
+  - When 3 chunks share one `fileName` + 1 chunk has a different `fileName`: bubble shows 2 chips, the first labeled `[1] notes.md · 3 chunks`, the second `[2] other.md · 1 chunk`.
+  - Click `[1] notes.md · 3 chunks` chip → drawer opens showing `notes.md · 3 chunks` header, a list of the 3 chunks (page + score each), and the first chunk's markdown rendered below.
+  - Click a different chunk in the drawer list → the rendered markdown below swaps to that chunk's content.
+  - Click × / ESC / backdrop → drawer closes.
+  - Existing single-source-drawer flow is preserved: any old caller that still passes `source={...}` (not `docSources={...}`) keeps working.
+- **Depends on:** —
+- **Estimate:** M
+- **Status:** done (this commit)
+
 ## Notes / blockers
 
 _(none yet)_

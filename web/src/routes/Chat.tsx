@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import { Bubble, type Source } from '../components/Bubble';
+import { Bubble, type DocSourceGroup, type Source } from '../components/Bubble';
 import { Composer } from '../components/Composer';
 import { SourceDrawer } from '../components/SourceDrawer';
+import { DocSourceDrawer } from '../components/DocSourceDrawer';
 import type { Conversation, Message } from '../services/sessions';
 import type { ServerStatus } from '../services/status';
 import { formatContextSize } from '../services/status';
@@ -74,6 +75,13 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
   // it. Living in Chat.tsx (not App.tsx) because the drawer is a
   // chat-column affordance — it shouldn't appear over /upload.
   const [openSource, setOpenSource] = useState<Source | null>(null);
+
+  // p3-T18 — DocSourceDrawer state. When a Bubble renders grouped
+  // source chips (one per file), clicking a chip hands us the whole
+  // group via onDocSourceClick. The DocSourceDrawer then lists the
+  // file's chunks and renders the active chunk's markdown. Exactly
+  // one of openSource / openDocSources is non-null at a time.
+  const [openDocSources, setOpenDocSources] = useState<DocSourceGroup | null>(null);
 
   // p3-T10 — expand-mode toggle state. Default 'auto' (Phase 03
   // behavior change from Phase 02's 'none' default — documented in
@@ -248,6 +256,7 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
             }
             toolCalls={m.toolCalls}
             onSourceClick={setOpenSource}
+            onDocSourceClick={setOpenDocSources}
           />
         ))}
 
@@ -261,12 +270,17 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
             toolCalls={pending.toolCalls}
             timestamp="just now"
             onSourceClick={setOpenSource}
+            onDocSourceClick={setOpenDocSources}
           />
         )}
       </div>
 
       <Composer disabled={pending?.aiStreaming} onSubmit={handleSubmit} />
       <SourceDrawer source={openSource} onClose={() => setOpenSource(null)} />
+      <DocSourceDrawer
+        docSources={openDocSources}
+        onClose={() => setOpenDocSources(null)}
+      />
     </section>
   );
 }

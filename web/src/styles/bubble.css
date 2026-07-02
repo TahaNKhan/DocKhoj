@@ -142,6 +142,29 @@
   font-size: 10px;
 }
 
+/* p3-T18 — doc chip (one per file, replacing the per-chunk chip).
+ * Visually identical to .chip but with a chunk-count badge in place
+ * of the per-chunk page label. The drawer click opens a drawer
+ * that lists every chunk for that file. */
+.chip.doc-chip {
+  border-color: var(--border);
+}
+
+.chip.doc-chip .count {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.chip.doc-chip:hover {
+  border-color: var(--accent);
+  background: rgba(226, 85, 64, 0.05);
+}
+
+.chip.doc-chip:hover .count {
+  color: var(--cream);
+}
+
 .followups {
   display: flex;
   flex-wrap: wrap;
@@ -503,6 +526,80 @@
   color: var(--muted);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+/* p3-T18 — DocSourceDrawer. The chunk list sits between the
+ * drawer-head and drawer-body; the active chunk's markdown renders
+ * in drawer-body as before. Selecting a chunk in the list swaps
+ * the body. */
+.doc-source-drawer .doc-chunk-list {
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid var(--border);
+  background: rgba(8, 6, 4, 0.25);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.doc-source-drawer .doc-chunk-row {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--fg-soft);
+  font-family: var(--f-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  padding: 8px 24px;
+  text-align: left;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 32px 60px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  transition: 0.15s;
+}
+
+.doc-source-drawer .doc-chunk-row:last-child {
+  border-bottom: 0;
+}
+
+.doc-source-drawer .doc-chunk-row:hover {
+  background: rgba(244, 236, 225, 0.04);
+}
+
+.doc-source-drawer .doc-chunk-row.active {
+  background: rgba(226, 85, 64, 0.10);
+  color: var(--cream);
+}
+
+.doc-source-drawer .doc-chunk-num {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.doc-source-drawer .doc-chunk-page {
+  color: var(--cream);
+}
+
+.doc-source-drawer .doc-chunk-page--empty {
+  color: var(--muted);
+}
+
+.doc-source-drawer .doc-chunk-crumb {
+  color: var(--fg-soft);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.doc-source-drawer .doc-chunk-score {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 
 @media (max-width: 720px) {
