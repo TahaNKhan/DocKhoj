@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import { migrate } from '../../src/db/migrate.js';
 import {
   streamAgentChat,
+  isToolsNotSupportedError,
   type AgentLoopDeps,
 } from '../../src/services/agent-loop.js';
 import type { AgentToolResult, ToolChunk } from '../../src/services/agent-tools.js';
@@ -579,6 +580,39 @@ describe('streamAgentChat', () => {
     expect((toolResults[0] as { name: string }).name).toBe('get_chunk');
   });
 
+  it('yields tools_not_supported when the SDK rejects the tools parameter', async () => {
+    const db = setupDb();
+    const stream: AgentLoopDeps['streamChatCompletionWithTools'] = () => {
+      return (async function* () {
+        throw new Error('Invalid request: unknown parameter tools');
+      })();
+    };
+    const deps: Partial<AgentLoopDeps> = {
+      embedText: async () => [0.1],
+      searchChunks: async () => makeBaseChunks() as unknown as Awaited<ReturnType<AgentLoopDeps['searchChunks']>>,
+      streamChatCompletionWithTools: stream,
+      executeAgentTool: async (): Promise<AgentToolResult> => ({ kind: 'chunks', chunks: [], truncated: false }),
+    };
+    const ac = new AbortController();
+    const events: Array<Record<string, unknown>> = [];
+    for await (const ev of streamAgentChat(
+      { question: 'q', sessionId: 's', db, deps },
+      ac.signal
+    )) {
+      events.push(ev as unknown as Record<string, unknown>);
+    }
+    // Initial retrieval always happens before the LLM call — the
+    // sources event is emitted first, then the loop tries to call
+    // the SDK, which throws the tools-not-supported error, and we
+    // yield tools_not_supported.
+    const toolsEvent = events.find((e) => e.type === 'tools_not_supported');
+    expect(toolsEvent).toEqual({ type: 'tools_not_supported' });
+    expect(events[0]!.type).toBe('sources');
+    // No tool_call / tool_result events when tools are unsupported.
+    expect(events.find((e) => e.type === 'tool_call')).toBeUndefined();
+    expect(events.find((e) => e.type === 'tool_result')).toBeUndefined();
+  });
+
   it('tracks tool-retrieved chunks as additional sources', async () => {
     const db = setupDb();
     const stream = makeMultiCallStream([
@@ -617,5 +651,30 @@ describe('streamAgentChat', () => {
     // First sources event has the base chunks.
     const sources = events.find((e) => e.type === 'sources') as { sources: unknown[] };
     expect(sources.sources).toHaveLength(2);
+  });
+});
+
+describe('isToolsNotSupportedError', () => {
+  it('detects "tools" + "not support"', () => {
+    expect(isToolsNotSupportedError(new Error('Tools not supported by this model'))).toBe(true);
+  });
+  it('detects "tools" + "unsupported"', () => {
+    expect(isToolsNotSupportedError(new Error('Invalid parameter: tools is unsupported'))).toBe(true);
+  });
+  it('detects "tools" + "unknown parameter"', () => {
+    expect(isToolsNotSupportedError(new Error('Invalid request: unknown parameter tools'))).toBe(true);
+  });
+  it('detects "function calling" + "unsupported"', () => {
+    expect(isToolsNotSupportedError(new Error('function calling is unsupported by gateway'))).toBe(true);
+  });
+  it('rejects errors that mention tools but do not deny support', () => {
+    expect(isToolsNotSupportedError(new Error('Network error while calling tools'))).toBe(false);
+  });
+  it('rejects non-tools errors', () => {
+    expect(isToolsNotSupportedError(new Error('Rate limit exceeded'))).toBe(false);
+  });
+  it('handles non-Error throws', () => {
+    expect(isToolsNotSupportedError('tools not supported')).toBe(true);
+    expect(isToolsNotSupportedError({ message: 'tools not supported' })).toBe(true);
   });
 });

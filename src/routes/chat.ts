@@ -18,6 +18,11 @@ const DEFAULT_HISTORY_MAX_TURNS = parseInt(process.env.CHAT_HISTORY_MAX_TURNS ||
 
 function parseExpandMode(value: string | undefined): ExpandMode {
   if (value === 'sections' || value === 'siblings') return value;
+  // Phase 03 / OD-1: the streaming endpoint (/api/chat/stream)
+  // defaults to `auto`. The non-streaming /api/chat endpoint
+  // doesn't run the agent loop (the SPA only streams); `auto` here
+  // resolves to `none` so non-streaming callers opt out of any
+  // expansion logic.
   return 'none';
 }
 

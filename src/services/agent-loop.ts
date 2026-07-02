@@ -75,7 +75,40 @@ export type AgentStreamEvent =
       iteration: number;
     }
   | { type: 'done'; iterations: number }
+  | { type: 'tools_not_supported' }
   | { type: 'error'; message: string };
+
+/**
+ * Heuristic: when the OpenAI SDK rejects a `tools` parameter (some
+ * gateways don't support it), the error message typically contains
+ * the substring "tools" along with words like "not support",
+ * "unsupported", "unknown parameter", etc. We use a relaxed match —
+ * any error whose message contains both "tools" and a
+ * support-denying word — to surface a typed `tools_not_supported`
+ * event so the route handler can fall back per FR-22.
+ *
+ * Exported so the test suite can pin the heuristic and the route
+ * handler can re-validate if it wants to.
+ */
+export function isToolsNotSupportedError(err: unknown): boolean {
+  let message: string;
+  if (err instanceof Error) {
+    message = err.message;
+  } else if (err && typeof err === 'object' && 'message' in err && typeof (err as { message: unknown }).message === 'string') {
+    message = (err as { message: string }).message;
+  } else {
+    message = String(err);
+  }
+  const lower = message.toLowerCase();
+  const mentionsTools = lower.includes('tool') || lower.includes('function calling');
+  const deniesSupport =
+    lower.includes('not support') ||
+    lower.includes('unsupported') ||
+    lower.includes('unknown param') ||
+    lower.includes('unknown field') ||
+    lower.includes('invalid request');
+  return mentionsTools && deniesSupport;
+}
 
 export interface StreamAgentChatParams {
   question: string;
@@ -215,6 +248,18 @@ export async function* streamAgentChat(
       }
     } catch (err) {
       if (signal.aborted) return;
+      // Some LLM gateways reject the `tools` parameter outright
+      // (FR-22 / U11 / OD-4). Surface a typed event so the route
+      // handler can fall back to the non-agentic path with a
+      // single `warn` log.
+      if (isToolsNotSupportedError(err)) {
+        log.warn(
+          { sessionId: params.sessionId, err },
+          'LLM does not support tools; signalling route to fall back'
+        );
+        yield { type: 'tools_not_supported' };
+        return;
+      }
       log.error({ err, sessionId: params.sessionId, iter }, 'streamChatCompletionWithTools threw');
       yield { type: 'error', message: 'Chat failed' };
       return;
