@@ -182,7 +182,7 @@ export async function searchChunks(
   }));
 }
 
-async function fetchByFilePathAndIndex(
+async function _fetchByFilePathAndIndex(
   filePath: string,
   chunkIndex: number
 ): Promise<DocumentChunk[]> {
@@ -216,7 +216,7 @@ async function fetchByFilePathAndIndex(
   }
 }
 
-async function fetchByFilePathAndHeadingPath(
+async function _fetchByFilePathAndHeadingPath(
   filePath: string,
   headingPath: string[]
 ): Promise<DocumentChunk[]> {
@@ -269,7 +269,7 @@ export async function expandHits(
         if (delta === 0) continue;
         const targetIndex = hit.payload.chunkIndex + delta;
         if (targetIndex < 0 || targetIndex >= hit.payload.totalChunks) continue;
-        const neighbors = await fetchByFilePathAndIndex(hit.payload.filePath, targetIndex);
+        const neighbors = await _fetchByFilePathAndIndex(hit.payload.filePath, targetIndex);
         for (const n of neighbors) {
           if (seen.has(n.id)) continue;
           seen.add(n.id);
@@ -286,7 +286,7 @@ export async function expandHits(
     for (const hit of hits) {
       const headingPath = hit.payload.headingPath ?? [];
       if (headingPath.length === 0) continue;
-      const sectionChunks = await fetchByFilePathAndHeadingPath(hit.payload.filePath, headingPath);
+      const sectionChunks = await _fetchByFilePathAndHeadingPath(hit.payload.filePath, headingPath);
       for (const s of sectionChunks) {
         if (seen.has(s.id)) continue;
         seen.add(s.id);
@@ -306,6 +306,48 @@ export async function deleteChunk(id: string): Promise<void> {
   await client.delete(COLLECTION_NAME, {
     points: [id],
   });
+}
+
+// Phase 03 / p3-T02: filter-based bulk delete (FR-4, FR-29, FR-5).
+// Removes every point whose payload.filePath equals `filePath`.
+// Returns the number of points deleted; 0 when the filter matches
+// nothing (idempotent — safe to call on collections that don't
+// have any matching chunks). The Qdrant JS SDK's response shape
+// varies between sync and async delete; we accept both.
+export async function deleteByFilePath(filePath: string): Promise<number> {
+  log.debug({ filePath }, 'Deleting chunks by filePath');
+  const result = (await client.delete(COLLECTION_NAME, {
+    filter: {
+      must: [{ key: 'filePath', match: { value: filePath } }],
+    } as unknown as Record<string, unknown>,
+  })) as unknown as Record<string, unknown>;
+
+  const inner = (result.result ?? {}) as Record<string, unknown>;
+  const deleted = typeof inner.deleted === 'number'
+    ? inner.deleted
+    : typeof inner.deleted_count === 'number'
+      ? inner.deleted_count
+      : 0;
+
+  log.info({ filePath, deleted }, 'Chunks deleted by filePath');
+  return deleted;
+}
+
+// Phase 03 / p3-T02: the two internal helpers are promoted to
+// public exports so the agent-tools module (p3-T05) can reuse them
+// for the get_neighbor_chunks and get_section_chunks tools.
+export async function fetchByFilePathAndIndex(
+  filePath: string,
+  chunkIndex: number
+): Promise<DocumentChunk[]> {
+  return _fetchByFilePathAndIndex(filePath, chunkIndex);
+}
+
+export async function fetchByFilePathAndHeadingPath(
+  filePath: string,
+  headingPath: string[]
+): Promise<DocumentChunk[]> {
+  return _fetchByFilePathAndHeadingPath(filePath, headingPath);
 }
 
 export async function getCollectionInfo() {

@@ -12,12 +12,14 @@ const {
   mockCreatePayloadIndex,
   mockUpsert,
   mockQuery,
+  mockDelete,
 } = vi.hoisted(() => ({
   mockGetCollections: vi.fn(),
   mockCreateCollection: vi.fn(),
   mockCreatePayloadIndex: vi.fn(),
   mockUpsert: vi.fn(),
   mockQuery: vi.fn(),
+  mockDelete: vi.fn(),
 }));
 
 vi.mock('@qdrant/qdrant-js', () => ({
@@ -27,10 +29,11 @@ vi.mock('@qdrant/qdrant-js', () => ({
     createPayloadIndex = mockCreatePayloadIndex;
     upsert = mockUpsert;
     query = mockQuery;
+    delete = mockDelete;
   },
 }));
 
-import { initCollection, searchChunks, expandHits, upsertChunks } from '../../src/services/qdrant.js';
+import { initCollection, searchChunks, expandHits, upsertChunks, deleteByFilePath } from '../../src/services/qdrant.js';
 
 describe('initCollection', () => {
   beforeEach(() => {
@@ -216,5 +219,42 @@ describe('upsertChunks', () => {
     expect(call[1].points).toHaveLength(1);
     expect(call[1].points[0].id).toBe('p1');
     expect(call[1].points[0].vector).toEqual([0.1, 0.2]);
+  });
+});
+
+// Phase 03 / p3-T02 — deleteByFilePath.
+describe('deleteByFilePath', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('calls client.delete with a filePath filter and returns the count', async () => {
+    // The Qdrant SDK's delete returns { result: { deleted, deleted_count? } }
+    // for a sync delete; we read whichever field is present.
+    mockDelete.mockResolvedValueOnce({ result: { deleted: 7 } });
+
+    const n = await deleteByFilePath('abc-123.md');
+    expect(n).toBe(7);
+
+    const call = mockDelete.mock.calls[0];
+    expect(call[0]).toBe('documents_test');
+    const filter = call[1].filter;
+    expect(JSON.stringify(filter)).toContain('filePath');
+    expect(JSON.stringify(filter)).toContain('abc-123.md');
+  });
+
+  it('returns 0 when no points match (idempotent)', async () => {
+    mockDelete.mockResolvedValueOnce({ result: { deleted: 0 } });
+    expect(await deleteByFilePath('nothing-here.md')).toBe(0);
+  });
+
+  it('falls back to 0 when the response shape omits the deleted count', async () => {
+    mockDelete.mockResolvedValueOnce({ status: 'acknowledged' });
+    expect(await deleteByFilePath('orphaned.md')).toBe(0);
+  });
+
+  it('propagates errors from the SDK', async () => {
+    mockDelete.mockRejectedValueOnce(new Error('qdrant down'));
+    await expect(deleteByFilePath('x.md')).rejects.toThrow('qdrant down');
   });
 });

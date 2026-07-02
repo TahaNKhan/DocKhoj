@@ -11,6 +11,7 @@ import { downloadRoutes } from './routes/download.js';
 import { sessionRoutes } from './routes/api-sessions.js';
 import { healthRoutes } from './routes/api-health.js';
 import { statusRoutes } from './routes/api-status.js';
+import { documentRoutes } from './routes/api-documents.js';
 import { initCollection } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
@@ -89,6 +90,9 @@ export async function buildApp() {
   // /api/status — live chunk count + Ollama reachability for the
   // TopBar chrome.
   await fastify.register(statusRoutes);
+
+  // Phase 03 / p3-T02 — documents list + delete endpoints.
+  await fastify.register(documentRoutes);
 
   return fastify;
 }

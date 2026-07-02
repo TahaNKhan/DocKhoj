@@ -117,7 +117,7 @@ async function processUpload(
       new DocumentStore(db).insert({
         fileId,
         fileName,
-        fileType: parsed.fileType,
+        fileType: parsed.fileType.replace(/^\./, ''),
         bytes,
         uploadedAt: nowSqlite(),
         chunkCount: totalIndexed,
