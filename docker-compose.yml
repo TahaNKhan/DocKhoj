@@ -78,6 +78,11 @@ services:
       - EMBEDDING_CONCURRENCY=${EMBEDDING_CONCURRENCY:-4}
       - CHAT_HISTORY_MAX_TURNS=${CHAT_HISTORY_MAX_TURNS:-20}
       - LOG_CHUNK_PREVIEW_CHARS=${LOG_CHUNK_PREVIEW_CHARS:-200}
+      # p3-T17 — agentic RAG loop budget. 10 iterations is the new
+      # default; the operator can override via .env (e.g. tighten on
+      # slow GPUs, loosen for thorough Q&A).
+      - MAX_AGENT_ITERATIONS=${MAX_AGENT_ITERATIONS:-10}
+      - TOOL_RESULT_TOKEN_CAP=${TOOL_RESULT_TOKEN_CAP:-10000}
     depends_on:
       ollama:
         condition: service_healthy

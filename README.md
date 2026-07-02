@@ -222,7 +222,7 @@ Any other non-`/api/*` path falls back to the SPA's `index.html`.
 | `EMBEDDING_CONCURRENCY` | `4` | Max parallel embed calls |
 | `CHAT_HISTORY_MAX_TURNS` | `20` | Conversation history cap per session |
 | `LOG_CHUNK_PREVIEW_CHARS` | `200` | Truncate logged chunk text to this many characters |
-| `MAX_AGENT_ITERATIONS` | `3` | Agent loop's LLM-call cap (1..3..). Higher = more thorough but slower and more expensive. |
+| `MAX_AGENT_ITERATIONS` | `10` | Agent loop's LLM-call cap (p3-T17 raised the default from 3 to 10 — the previous cap caused the LLM to get cut off mid-investigation on questions that needed more than 3 retrieval rounds). The LLM is told the cap in the system prompt and gets a per-iteration `[System reminder]` user message naming the current iteration + remaining count, with escalating urgency as it approaches the limit. |
 | `TOOL_RESULT_TOKEN_CAP` | `10000` | Per-iteration cap on total tool-result tokens (cl100k_base). Lower = smaller LLM context window per iteration. |
 
 ---

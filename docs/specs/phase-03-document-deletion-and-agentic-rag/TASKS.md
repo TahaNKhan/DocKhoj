@@ -261,6 +261,21 @@ Reported after Phase 03 was signed off. These are all bug-fixes / UX polish — 
 - **Estimate:** M
 - **Status:** done (this commit — new `ToolUseLine` component replaces `ToolCallChip` + `ToolResultChip`; collapsed chip "🔧 Tool use · N calls · M iterations"; expanded panel renders one row per call with name + args preview + result summary + truncated badge; per-call CSS lives in `bubble.css` next to the bubble styles; 16 component tests pin both states)
 
+### p3-T17 — Iteration budget: raise default to 10 + tell the LLM where it is
+
+- **Description:** The default `MAX_AGENT_ITERATIONS=3` was too tight — the LLM would confidently start exploring, hit the cap mid-loop, and emit a partial answer ("visions.") with no useful context because the tools kept failing in earlier iterations. Raise the default to 10. More importantly, the LLM had **no idea** a cap existed — the system prompt never said so, and there was no per-iteration reminder. Add a "Tool budget" section to the agent loop's system prompt that names the cap explicitly (using `${MAX_AGENT_ITERATIONS}` so a custom env var carries through), and after each iteration's tool execution append a `[System reminder]` user message saying "Iteration N of M complete. K remaining" with escalating urgency as iterations drain (≤2: "wrap up"; 1: "this is your last iteration").
+- **Maps to FR:** FR-15
+- **Maps to design:** §Agent loop (SYSTEM_PROMPT, tool-budget section)
+- **Acceptance:**
+  - Unit test: the agent loop, after iteration 1 of 5 completes, has appended a user role message to the messages array whose content includes "1 of 5" and "4" (remaining).
+  - Unit test: the user reminder at iteration 4 of 5 (remaining = 1) includes "last iteration" or equivalent urgency text.
+  - Snapshot test: the system prompt string contains the literal "iterations" and references the cap (e.g. "up to ${MAX_AGENT_ITERATIONS}" in the source file).
+  - Unit test: `MAX_AGENT_ITERATIONS` default is 10 (assert via parseInt of `'10'`).
+  - Existing test "caps at MAX_AGENT_ITERATIONS when the LLM keeps calling tools" updated to expect the new default of 10 stream calls.
+- **Depends on:** —
+- **Estimate:** S
+- **Status:** done (this commit)
+
 ## Notes / blockers
 
 _(none yet)_

@@ -41,7 +41,7 @@ type DB = Database.Database;
 // has a useful starting context; the four tools let it drill in
 // further if needed (OD-7 / OQ-7 resolved).
 
-const MAX_AGENT_ITERATIONS = parseInt(process.env.MAX_AGENT_ITERATIONS || '3', 10);
+const MAX_AGENT_ITERATIONS = parseInt(process.env.MAX_AGENT_ITERATIONS || '10', 10);
 const TOOL_RESULT_TOKEN_CAP = parseInt(process.env.TOOL_RESULT_TOKEN_CAP || '10000', 10);
 
 const SYSTEM_PROMPT = `You are a helpful assistant that answers questions based on the user's documents.
@@ -56,6 +56,8 @@ Tool argument conventions — these are the most common mistakes:
   - filePath is the on-disk basename (e.g. "doc-uuid-aaa.pdf"). The source list shows it as file="…". Copy that value verbatim — do NOT pass the user-facing fileName.
   - chunkId is a UUID. The source list shows it as id="…". Copy that value verbatim — do NOT pass "Source 1" or the source number.
   - headingPath is an array of strings, in document order, e.g. ["Chapter 2", "Setup"]. Empty array is not a valid headingPath.
+
+Iteration budget: you have up to ${MAX_AGENT_ITERATIONS} iterations to answer this question. Each iteration is one LLM call (potentially with multiple tool calls in the same iteration). When you have enough context to answer confidently, respond with the final answer and no further tool calls — don't keep exploring past what's needed. After each iteration you'll get a [System reminder] message telling you which iteration just finished and how many you have left; treat the last iteration as a hard deadline (respond with whatever you have, even if it's a partial answer).
 
 Use the tools when the initial context isn't enough to answer confidently. When you have enough context, respond with the answer and no tool calls. Do not emit chain-of-thought or <think>…</think> blocks in your visible output — think internally but write only the final answer.
 
@@ -408,6 +410,31 @@ export async function* streamAgentChat(
     // Append tool messages so the next LLM call sees the tool
     // responses in context.
     for (const m of toolMessages) messages.push(m);
+
+    // Tell the LLM where it is in the budget (p3-T17). After each
+    // iteration we append a [System reminder] user message naming
+    // the iteration count and remaining iterations. The hint
+    // escalates as we approach the cap so a model that's already
+    // answered confidently doesn't keep exploring, but a model
+    // that's mid-research doesn't get pressured into a premature
+    // wrap-up. Only emitted when there's still a next iteration —
+    // on the final iteration the loop exits and there's no point
+    // reminding.
+    const remaining = MAX_AGENT_ITERATIONS - (iter + 1);
+    if (remaining > 0) {
+      let hint = '';
+      if (remaining === 1) {
+        hint = ' This is your LAST iteration — produce the final answer now (with or without further tool calls).';
+      } else if (remaining <= 2) {
+        hint = ' Aim to wrap up to avoid running out of iterations.';
+      } else if (remaining <= Math.max(3, Math.floor(MAX_AGENT_ITERATIONS / 2))) {
+        hint = ' Consider wrapping up if you can answer confidently.';
+      }
+      messages.push({
+        role: 'user',
+        content: `[System reminder] Iteration ${iter + 1} of ${MAX_AGENT_ITERATIONS} complete. ${remaining} iteration(s) remaining.${hint} If you have enough context, answer now without further tool calls.`,
+      });
+    }
   }
 
   // Hit MAX_AGENT_ITERATIONS without a final answer — emit done with

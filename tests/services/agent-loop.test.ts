@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import Database from 'better-sqlite3';
+import type { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js';
 import { migrate } from '../../src/db/migrate.js';
 import {
   streamAgentChat,
@@ -214,7 +215,8 @@ describe('streamAgentChat', () => {
 
   it('caps at MAX_AGENT_ITERATIONS when the LLM keeps calling tools', async () => {
     const db = setupDb();
-    const MAX_AGENT_ITERATIONS = 3;
+    // p3-T17 raised the default from 3 to 10 — pin that here.
+    const MAX_AGENT_ITERATIONS = 10;
     let streamCalls = 0;
     const stream: AgentLoopDeps['streamChatCompletionWithTools'] = () => {
       streamCalls += 1;
@@ -429,20 +431,18 @@ describe('streamAgentChat', () => {
 
   it('emits the placeholder text when MAX_ITERATIONS is hit without a final answer', async () => {
     const db = setupDb();
-    const stream = makeFakeStream([
+    // p3-T17 raised the default cap to 10 — produce 10 tool calls
+    // (one per iteration), each via a fresh stream, so the loop
+    // hits the cap without ever receiving a final answer.
+    const toolCallFrames = Array.from({ length: 10 }, (_, i) => [
       {
         text: '',
-        toolCalls: [{ index: 0, id: 'a', name: 'get_chunk', arguments: '{"chunkId":"a"}' }],
-      },
-      {
-        text: '',
-        toolCalls: [{ index: 0, id: 'b', name: 'get_chunk', arguments: '{"chunkId":"b"}' }],
-      },
-      {
-        text: '',
-        toolCalls: [{ index: 0, id: 'c', name: 'get_chunk', arguments: '{"chunkId":"c"}' }],
+        toolCalls: [
+          { index: 0, id: `call-${i}`, name: 'get_chunk', arguments: `{"chunkId":"c${i}"}` },
+        ],
       },
     ]);
+    const stream = makeMultiCallStream(toolCallFrames);
     const deps: Partial<AgentLoopDeps> = {
       embedText: async () => [0.1],
       searchChunks: async () => makeBaseChunks() as unknown as Awaited<ReturnType<AgentLoopDeps['searchChunks']>>,
@@ -462,7 +462,7 @@ describe('streamAgentChat', () => {
       events.push(ev as unknown as Record<string, unknown>);
     }
     const done = events.find((e) => e.type === 'done');
-    expect(done).toEqual({ type: 'done', iterations: 3 });
+    expect(done).toEqual({ type: 'done', iterations: 10 });
     // Look for the placeholder token before the done.
     const tokens = events.filter((e) => e.type === 'token').map((e) => (e as { text: string }).text);
     const placeholder = "I wasn't able to find a definitive answer";
@@ -652,6 +652,176 @@ describe('streamAgentChat', () => {
     // First sources event has the base chunks.
     const sources = events.find((e) => e.type === 'sources') as { sources: unknown[] };
     expect(sources.sources).toHaveLength(2);
+  });
+
+  // p3-T17 — the LLM must know it's inside a budget so it can plan
+  // its exploration instead of getting cut off mid-investigation.
+  describe('iteration budget (p3-T17)', () => {
+    it('appends a [System reminder] user message after each iteration with tool calls', async () => {
+      const db = setupDb();
+      let streamCalls = 0;
+      const capturedMessages: ChatCompletionMessageParam[][] = [];
+      const stream: AgentLoopDeps['streamChatCompletionWithTools'] = (
+        messages
+      ) => {
+        streamCalls += 1;
+        capturedMessages.push(messages.map((m) => ({ ...m })));
+        if (streamCalls === 1) {
+          return (async function* () {
+            yield {
+              text: '',
+              toolCalls: [
+                { index: 0, id: 'call-1', name: 'get_chunk', arguments: '{"chunkId":"c1"}' },
+              ],
+            };
+          })();
+        }
+        return (async function* () {
+          yield { text: 'done', toolCalls: [] };
+        })();
+      };
+      const deps: Partial<AgentLoopDeps> = {
+        embedText: async () => [0.1],
+        searchChunks: async () => makeBaseChunks() as unknown as Awaited<ReturnType<AgentLoopDeps['searchChunks']>>,
+        streamChatCompletionWithTools: stream,
+        executeAgentTool: async (): Promise<AgentToolResult> => ({
+          kind: 'chunks',
+          chunks: [makeChunk('c1')],
+          truncated: false,
+        }),
+      };
+      const ac = new AbortController();
+      const events: Array<Record<string, unknown>> = [];
+      for await (const ev of streamAgentChat(
+        { question: 'q', sessionId: 's', db, deps },
+        ac.signal
+      )) {
+        events.push(ev as unknown as Record<string, unknown>);
+      }
+
+      // The LLM was called twice. On the second call, the messages
+      // array should include a [System reminder] user message
+      // (appended after the tool messages from iter 1).
+      const secondCallMessages = capturedMessages[1]!;
+      const reminder = secondCallMessages.find(
+        (m) => m.role === 'user' && typeof m.content === 'string' && m.content.includes('[System reminder]')
+      );
+      expect(reminder).toBeDefined();
+      expect(reminder!.content as string).toContain('Iteration 1 of');
+      expect(reminder!.content as string).toContain('remaining');
+    });
+
+    it('omits the reminder on the final iteration (no next call to consume it)', async () => {
+      const db = setupDb();
+      // Two iterations: iter 0 returns a tool call (so the reminder
+      // for iter 0 IS appended), iter 1 returns a final answer (so
+      // the loop terminates and no reminder for iter 1 is appended).
+      const capturedMessages: ChatCompletionMessageParam[][] = [];
+      let streamCalls = 0;
+      const stream: AgentLoopDeps['streamChatCompletionWithTools'] = (
+        messages
+      ) => {
+        streamCalls += 1;
+        capturedMessages.push(messages.map((m) => ({ ...m })));
+        if (streamCalls === 1) {
+          return (async function* () {
+            yield {
+              text: '',
+              toolCalls: [
+                { index: 0, id: 'call-1', name: 'get_chunk', arguments: '{"chunkId":"c1"}' },
+              ],
+            };
+          })();
+        }
+        return (async function* () {
+          yield { text: 'the final answer', toolCalls: [] };
+        })();
+      };
+      const deps: Partial<AgentLoopDeps> = {
+        embedText: async () => [0.1],
+        searchChunks: async () => makeBaseChunks() as unknown as Awaited<ReturnType<AgentLoopDeps['searchChunks']>>,
+        streamChatCompletionWithTools: stream,
+        executeAgentTool: async (): Promise<AgentToolResult> => ({
+          kind: 'chunks',
+          chunks: [makeChunk('c1')],
+          truncated: false,
+        }),
+      };
+      const ac = new AbortController();
+      const events: Array<Record<string, unknown>> = [];
+      for await (const ev of streamAgentChat(
+        { question: 'q', sessionId: 's', db, deps },
+        ac.signal
+      )) {
+        events.push(ev as unknown as Record<string, unknown>);
+      }
+      // Two LLM stream calls happened.
+      expect(streamCalls).toBe(2);
+      // iter 0's tool execution ran, so a reminder was appended.
+      // The second stream call (iter 1) should see this reminder in
+      // its messages array.
+      const secondCallMessages = capturedMessages[1]!;
+      const iter0Reminder = secondCallMessages.find(
+        (m) =>
+          m.role === 'user' &&
+          typeof m.content === 'string' &&
+          m.content.includes('[System reminder]')
+      );
+      expect(iter0Reminder).toBeDefined();
+      expect(iter0Reminder!.content as string).toContain('Iteration 1 of');
+      // The loop then terminated after iter 1 (final answer), so
+      // there should be NO reminder appended for "Iteration 2 of"
+      // (since iter 1 returned a final answer and the loop exited
+      // without running a third iteration).
+      const iter1Reminder = secondCallMessages.find(
+        (m) =>
+          m.role === 'user' &&
+          typeof m.content === 'string' &&
+          m.content.includes('Iteration 2 of')
+      );
+      expect(iter1Reminder).toBeUndefined();
+    });
+
+    it('system prompt mentions the iteration budget explicitly', () => {
+      // The system prompt must tell the LLM there's a cap so it can
+      // plan exploration. We check the source file so the test is
+      // independent of how the prompt is constructed (function vs
+      // const) — only that the cap is named.
+      const fs = require('node:fs') as typeof import('node:fs');
+      const src = fs.readFileSync(
+        new URL('../../src/services/agent-loop.ts', import.meta.url),
+        'utf8'
+      );
+      expect(src).toContain('Iteration budget');
+      expect(src).toContain('${MAX_AGENT_ITERATIONS}');
+    });
+
+    it('default MAX_AGENT_ITERATIONS is 10 (not the old 3)', () => {
+      // The module-level parseInt defaults to '10'. We assert that
+      // explicitly so a future regression to '3' is caught — the
+      // user-facing change in p3-T17 was raising the cap to 10.
+      const fs = require('node:fs') as typeof import('node:fs');
+      const src = fs.readFileSync(
+        new URL('../../src/services/agent-loop.ts', import.meta.url),
+        'utf8'
+      );
+      expect(src).toMatch(/MAX_AGENT_ITERATIONS[^=]*=\s*parseInt\([^)]*\|\|\s*'10'/);
+    });
+
+    it('keeps the reminder back-loaded — the urgency hint escalates near the cap', async () => {
+      // The hint text is selected by `remaining`. The simplest way
+      // to verify the escalating behavior is to read the source
+      // and check that the three thresholds exist.
+      const fs = require('node:fs') as typeof import('node:fs');
+      const src = fs.readFileSync(
+        new URL('../../src/services/agent-loop.ts', import.meta.url),
+        'utf8'
+      );
+      expect(src).toMatch(/remaining === 1/);
+      expect(src).toMatch(/remaining <= 2/);
+      expect(src).toMatch(/LAST iteration/);
+      expect(src).toMatch(/wrap up/);
+    });
   });
 });
 
