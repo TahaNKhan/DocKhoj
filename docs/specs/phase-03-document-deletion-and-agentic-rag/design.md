@@ -14,7 +14,7 @@ flowchart LR
     Mode -->|expand=auto| SSE
   end
 
-  subgraph Server (single Fastify process)
+  subgraph Server["Server — single Fastify process"]
     Docs[/routes/api-documents.ts/]
     Chat[/routes/chat-stream.ts/]
     SSE -->|POST /api/chat/stream| Chat
