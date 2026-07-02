@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'preact/hooks';
 import { Bubble, type Source } from '../components/Bubble';
 import { Composer } from '../components/Composer';
 import type { Conversation, Message } from '../services/sessions';
@@ -35,6 +36,43 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
     ? `${formatContextSize(status.llmContextSize)} ctx`
     : null;
 
+  // T49 — scroll the stream to the bottom on session load (initial
+  // mount + session switch). Two guards:
+  //
+  //   1. `messages.length === 0` — the active session may have just
+  //      switched but its messages haven't loaded yet; bail and let
+  //      the next effect run (when the fetch completes) do the scroll.
+  //      Without this, we'd update lastScrolledFor while the stream
+  //      is empty and miss the real scroll when messages arrive.
+  //
+  //   2. `lastScrolledFor.current === id` — once we've jumped to the
+  //      bottom for a session we leave the user's scroll position
+  //      alone. Token streaming grows `messages.length` but doesn't
+  //      change the session id, so this guard naturally ignores it —
+  //      that's intentional, see T49 in TASKS.md.
+  //
+  // We use `behavior: 'auto'` (instant) rather than letting the
+  // container's `scroll-behavior: smooth` animate the jump; a
+  // programmatic jump on load should land without a visible tween.
+  // The rAF gives Preact one paint to commit the new message nodes
+  // before we measure scrollHeight.
+  const streamRef = useRef<HTMLDivElement>(null);
+  const lastScrolledFor = useRef<string | null>(null);
+  useEffect(() => {
+    const el = streamRef.current;
+    if (!el) return;
+    const id = activeSession?.id;
+    if (!id) return;
+    if (messages.length === 0) return;
+    if (lastScrolledFor.current === id) return;
+    lastScrolledFor.current = id;
+    requestAnimationFrame(() => {
+      const live = streamRef.current;
+      if (!live) return;
+      live.scrollTo({ top: live.scrollHeight, behavior: 'auto' });
+    });
+  }, [activeSession?.id, messages.length]);
+
   return (
     <section class="chat">
       <div class="toolbar">
@@ -57,7 +95,7 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
         </div>
       </div>
 
-      <div class="stream">
+      <div class="stream" ref={streamRef}>
         {loading && (
           <div class="bubble ai" style={{ opacity: 0.6 }}>
             <div class="who">

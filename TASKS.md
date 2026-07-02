@@ -268,6 +268,16 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Estimate:** S
 - **Status:** done
 
+## T49 — Auto-scroll chat to bottom on session load
+
+- **Description:** The `.stream` container (`web/src/routes/Chat.tsx`) did not auto-scroll on mount or on session switch — opening a long conversation or switching to one in the sidebar left the user pinned at the top. Add a `streamRef` + `lastScrolledFor` ref pair and a `useEffect` keyed on `[activeSession?.id, messages.length]` that calls `el.scrollTo({ top: scrollHeight, behavior: 'auto' })` once per session id. Guard with `if (messages.length === 0) return` so the brief race between `setActiveId(id)` and the resolved `listMessages(id)` doesn't lock out the real scroll. Token streaming is intentionally NOT a trigger — once landed at the bottom, the user's reading position is preserved across streaming growth. `behavior: 'auto'` overrides the container's `scroll-behavior: smooth` so the initial jump is instant, not tweened.
+- **Maps to FR:** UX-49 (implied by the spec's chat-column contract)
+- **Maps to design:** §Module layout (Chat route)
+- **Acceptance:** `./restart.sh` boots the stack; load `/chat` for a session with prior messages and the stream scrolls to the bottom on mount; switch to a second session in the sidebar and the new conversation's most recent message is visible without a manual scroll; during a streaming response, manually scrolling up to read history is NOT yanked back to the bottom; the existing chat tests in `web/tests/routes/Chat.test.tsx` cover all three cases plus the loading-empty and load-race races and pass under `npm test`.
+- **Depends on:** —
+- **Estimate:** S
+- **Status:** done
+
 ---
 
 # Phase 01 — Smart Chunker & Cleanup
