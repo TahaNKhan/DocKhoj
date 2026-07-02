@@ -162,8 +162,22 @@
     margin-right: 12px;
   }
 
-  .topnav,
-  .topmeta .label {
+  /* Hide the brand name (keep just the mark icon) and the
+     "online/offline" label so the live chunk count + nav pills still
+     fit on a 360px-wide viewport. The Chat/Upload nav stays visible
+     — it's the primary way users move between the two surfaces. */
+  .topmeta .label,
+  .brand-name {
     display: none;
+  }
+
+  .topbar {
+    gap: 12px;
+    padding: 14px var(--pad);
+  }
+
+  .topnav a {
+    padding: 6px 12px;
+    font-size: 12px;
   }
 }
