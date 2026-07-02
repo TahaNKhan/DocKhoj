@@ -497,3 +497,125 @@
     justify-content: flex-start;
   }
 }
+
+/* Documents list (p3-T03) — same surface chrome as the queue rows,
+ * but persistent (the queue is ephemeral; documents are the
+ * "what's indexed" view). Inline-confirm delete pattern: first
+ * click arms; second click within 5s commits. */
+.documents-list ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.documents-empty {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--muted);
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.docrow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  transition: 0.2s;
+  animation: rise 0.35s ease-out;
+}
+
+.docrow:hover {
+  border-color: #3a322c;
+  background: var(--surface-2);
+}
+
+.docrow .ext {
+  width: 40px;
+  height: 48px;
+  border-radius: 5px;
+  background: linear-gradient(180deg, #1f1a16, #15110e);
+  display: grid;
+  place-items: center;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  border: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.docrow .meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.docrow .name {
+  font-size: 14px;
+  color: var(--cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.docrow .sub {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.docrow .actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.docrow button.del,
+.docrow button.del-confirm,
+.docrow button.del-err {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 8px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.docrow button.del:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.docrow.confirming button.del-confirm {
+  border-color: #c54a3a;
+  color: #f08775;
+  background: rgba(197, 74, 58, 0.08);
+}
+
+.docrow.errored button.del-err {
+  border-color: #c54a3a;
+  color: #f08775;
+  background: rgba(197, 74, 58, 0.05);
+}
+
+.docrow button.del:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}

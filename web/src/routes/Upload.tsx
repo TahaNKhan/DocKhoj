@@ -6,8 +6,14 @@ import {
   fmtSize,
   type QueueRowData,
 } from '../components/QueueRow';
+import { DocumentsList } from '../components/DocumentsList';
 import { uploadFile } from '../services/upload';
 import { fetchStatus } from '../services/status';
+import {
+  listDocuments,
+  deleteDocument,
+  type Document,
+} from '../services/documents';
 
 // Upload route — page head + dropzone + queue. p2-T15 wires Dropzone to
 // POST /api/upload via XHR so transport progress drives the queue
@@ -28,6 +34,16 @@ interface InFlightUpload {
 export function Upload() {
   const [rows, setRows] = useState<QueueRowData[]>([]);
   const [chunksIndexed, setChunksIndexed] = useState<number | null>(null);
+
+  // Phase 03 / p3-T03: Documents list state. Loaded once on
+  // mount, refreshed after each upload completes, refreshed after
+  // each successful delete. The list is the source of truth for
+  // what's indexed — we don't fold rows into it; the queue is
+  // short-lived (one-shot upload flow) and the documents list is
+  // persistent.
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<string | undefined>(undefined);
+  const [documentsVersion, bumpDocumentsVersion] = useState(0);
 
   // Track in-flight uploads by id so the "×" button can abort them.
   // ref (not state) because mutating the handle's abort fn doesn't
@@ -59,6 +75,25 @@ export function Upload() {
       inflightRef.current.clear();
     };
   }, []);
+
+  // Phase 03 / p3-T03: load the documents list. Refreshed by
+  // bumping `documentsVersion` (after upload completion, after
+  // delete). No continuous polling — the list is otherwise static
+  // during a page session.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const docs = await listDocuments();
+        if (!cancelled) setDocuments(docs);
+      } catch {
+        /* network blip — keep last value */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [documentsVersion]);
 
   function remove(id: string) {
     const handle = inflightRef.current.get(id);
@@ -118,6 +153,9 @@ export function Upload() {
               progress: 100,
               chunks: result.chunksIndexed ?? 0,
             });
+            // Phase 03 / p3-T03: refresh the documents list so the
+            // new row shows up below the queue.
+            bumpDocumentsVersion((v) => v + 1);
           } else {
             updateRow(row.id, {
               status: 'failed',
@@ -150,6 +188,19 @@ export function Upload() {
     // handle, which calls xhr.abort() directly. This ac is here so
     // a future "cancel all" UI hook has something to wire to.
     void ac;
+  }
+
+  async function handleDelete(fileId: string): Promise<void> {
+    setPendingDelete(fileId);
+    try {
+      await deleteDocument(fileId);
+      // Refresh both the documents list and the status (chunks count
+      // will drop on the next 5s poll; explicit refresh here makes
+      // the delete feel instant).
+      bumpDocumentsVersion((v) => v + 1);
+    } finally {
+      setPendingDelete(undefined);
+    }
   }
 
   return (
@@ -190,6 +241,17 @@ export function Upload() {
               </div>
             )}
           </div>
+        </div>
+
+        <div class="section">
+          <h3>
+            Documents <span class="count">{documents.length}</span>
+          </h3>
+          <DocumentsList
+            documents={documents}
+            onDelete={handleDelete}
+            pendingFileId={pendingDelete}
+          />
         </div>
       </div>
     </div>
