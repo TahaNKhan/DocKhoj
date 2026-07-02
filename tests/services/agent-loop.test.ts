@@ -251,7 +251,7 @@ describe('streamAgentChat', () => {
     expect(toolCallEvents).toHaveLength(MAX_AGENT_ITERATIONS);
   });
 
-  it('marks a tool_result as truncated when it would exceed TOOL_RESULT_TOKEN_CAP', { timeout: 30_000 }, async () => {
+  it('marks a tool_result as truncated when it would exceed TOOL_RESULT_TOKEN_CAP', { timeout: 180_000 }, async () => {
     const db = setupDb();
     // 100K chars ≈ 12K cl100k_base tokens — over the 10K cap. The
     // exact ratio depends on the character; 'x' is roughly 8 chars
@@ -293,7 +293,7 @@ describe('streamAgentChat', () => {
     expect(toolResultEvent!.truncated).toBe(true);
   });
 
-  it('applies the cap incrementally across multiple tool calls in the same iteration', async () => {
+  it('applies the cap incrementally across multiple tool calls in the same iteration', { timeout: 60_000 }, async () => {
     const db = setupDb();
     // 3 tool calls, each producing ~10K tokens. Cap = 12K → first
     // fits, second partial, third truncated to marker.

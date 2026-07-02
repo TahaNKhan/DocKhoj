@@ -1,8 +1,8 @@
 # Phase 03 — Document Deletion and Agentic RAG
 
-**Status:** planning
-**Started:** —
-**Done:** —
+**Status:** done
+**Started:** 2026-07-01
+**Done:** 2026-07-02
 
 ## Isolation
 - **Branch:** `main` (medium-large feature — multi-day, spans server + SPA + persistence; spec folder only, no dedicated worktree)
@@ -31,7 +31,7 @@ No dedicated worktree: review is sequential and the spec is the contract. Spans 
   - New SPA service (`services/documents.ts`), new `DocumentsList` component, integrated into the `/upload` page below the upload queue.
   - `GET /api/status` adds a `documents: number` field.
 - **Agentic RAG:**
-  - New `expand=auto` mode (opt-in; default stays `none`). When set, the LLM is given four retrieval tools (`get_neighbor_chunks`, `get_section_chunks`, `get_chunk`, `get_document`) and may call them in a bounded loop.
+  - New `expand=auto` mode (default in Phase 03; was `none` in Phase 02). When set, the LLM is given four retrieval tools (`get_neighbor_chunks`, `get_section_chunks`, `get_chunk`, `get_document`) and may call them in a bounded loop.
   - Loop bounds: `MAX_AGENT_ITERATIONS` (default 3) iterations, `TOOL_RESULT_TOKEN_CAP` (default 10_000 tokens) per iteration. Both env-configurable.
   - Two new SSE events: `event: tool_call`, `event: tool_result`. Both stream live, interleaved with `event: token`.
   - New migration `004_tool_calls.sql` adds a `tool_calls` column on `messages` (nullable JSON). `ConversationStore.appendAssistantMessage` accepts an optional `toolCalls: ToolCall[]`.
@@ -43,8 +43,8 @@ No dedicated worktree: review is sequential and the spec is the contract. Spans 
 - **Backward compatibility:**
   - All Phase 02 endpoints keep their existing shape.
   - `expand=none | siblings | sections` keep their existing behavior; only `expand=auto` adds the agent loop.
-  - Default `expand` stays `none` so existing scripts and the Phase 02 UX don't change unless the user opts in.
-  - Document deletion is purely additive — no existing behavior changes. Existing `chunkCount` on `/api/status` is unchanged; `documents` is added alongside it.
+  - **Breaking behavior change:** Default `expand` is now `auto` (was `none` in Phase 02). Existing scripts / automations relying on the non-agentic fast path should pass `"expand":"none"` explicitly. The SPA's new toolbar chip defaults to `Auto` to match. Documented in README.md under "Behavior changes from Phase 02 → Phase 03".
+  - Document deletion is purely additive — no existing endpoint shape changes. `documents` is added to `/api/status`; the existing `chunks` field is unchanged.
 - **No new infrastructure services.** All state lives in SQLite (already running) and Qdrant (already running).
 
 ## Out of scope (this phase)

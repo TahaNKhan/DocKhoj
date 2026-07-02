@@ -70,13 +70,16 @@ Open http://localhost:3001
 ## Features
 
 - 📤 Upload PDFs, DOCX, TXT, MD files (drag & drop, multi-file batch with per-file status)
+- 🗑️ List and **delete** indexed documents — Qdrant filter-delete + SQLite row + on-disk file all cleaned up
 - 🔍 Vector similarity search with **filters** (`fileName`, `fileType`) and **structured metadata** on every chunk (`headingPath`, `pageNumber`, `blockKind`)
 - 🧱 Token-aware, **structurally-aware chunker** — never splits a code fence or a single list item, carries heading paths through to citations
 - ✂️ Optional **semantic splitting** for long uniform sections (on by default; uses extra embedding calls)
 - 🧩 Server-side **context expansion** with `expand=siblings` or `expand=sections` on `/api/search`, `/api/search/rag`, and `/api/chat`
-- 💬 RAG-powered Q&A with citations, **streaming tokens** via SSE
+- 🤖 **Agentic RAG** with `expand=auto` — the LLM gets four retrieval tools (neighbors, sections, single chunk, document metadata) and may call them in a bounded loop (default 3 iterations, 10K-token per-iteration tool-result cap) before answering
+- 💬 RAG-powered Q&A with citations, **streaming tokens** via SSE, plus `tool_call` / `tool_result` events for the agentic path
 - 🧠 Markdown rendering in assistant bubbles (sanitized via DOMPurify — XSS-safe per FR-33)
-- 💾 Persistent conversations in SQLite — survives container restarts
+- 🪛 Tool chips below each assistant bubble — click to expand and audit the agent's reasoning
+- 💾 Persistent conversations in SQLite — survives container restarts; tool calls persist on each assistant message
 - 🛡️ Path-traversal-safe download endpoint with correct MIME types
 - ⚡ Bounded-parallel embedding via `p-limit` and exponential-backoff retry
 - 🧯 Graceful shutdown on SIGTERM/SIGINT
@@ -121,11 +124,13 @@ curl -X POST http://localhost:3001/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"q":"what was discussed in the meeting?","sessionId":"<id>","expand":"sections"}'
 
-# Streaming chat (SSE — events: meta, sources, token*, done, title)
+# Streaming chat (SSE — events: meta, sources, token*, tool_call*, tool_result*, done, title)
 curl -N -X POST http://localhost:3001/api/chat/stream \
   -H 'Content-Type: application/json' \
   -d '{"q":"hello","sessionId":"<id>"}'
 ```
+
+The `tool_call*` and `tool_result*` events fire only when `expand=auto` (the agentic path). On the non-agentic path (Phase 02 behavior), only `meta / sources / token / done / title` events are emitted.
 
 ### Search
 
@@ -169,7 +174,19 @@ curl http://localhost:3001/api/health
 
 # Live chunk count + Ollama reachability (for the TopBar status indicator)
 curl http://localhost:3001/api/status
-# -> {"chunks":298,"ollamaAvailable":true}
+# -> {"chunks":298,"ollamaAvailable":true,"documents":3}
+```
+
+### Documents
+
+```bash
+# List all indexed documents, most-recent first
+curl http://localhost:3001/api/documents
+# -> {"documents":[{"fileId":"abc-123","fileName":"notes.md","fileType":"md","bytes":4096,"chunkCount":17,"uploadedAt":"2026-07-02 09:00:00"}, ...]}
+
+# Delete a document (removes Qdrant points, the on-disk file, and the SQLite row)
+curl -X DELETE http://localhost:3001/api/documents/<fileId>
+# -> {"success":true,"chunksDeleted":17,"fileId":"abc-123"}
 ```
 
 ### SPA pages
@@ -205,6 +222,8 @@ Any other non-`/api/*` path falls back to the SPA's `index.html`.
 | `EMBEDDING_CONCURRENCY` | `4` | Max parallel embed calls |
 | `CHAT_HISTORY_MAX_TURNS` | `20` | Conversation history cap per session |
 | `LOG_CHUNK_PREVIEW_CHARS` | `200` | Truncate logged chunk text to this many characters |
+| `MAX_AGENT_ITERATIONS` | `3` | Agent loop's LLM-call cap (1..3..). Higher = more thorough but slower and more expensive. |
+| `TOOL_RESULT_TOKEN_CAP` | `10000` | Per-iteration cap on total tool-result tokens (cl100k_base). Lower = smaller LLM context window per iteration. |
 
 ---
 
@@ -232,6 +251,15 @@ The Phase 02 cutover moved every JSON API under `/api/*`. If you're upgrading fr
 The old paths return 404 JSON (no redirects). The SPA itself runs under `/` (and serves `/chat` and `/upload`), so the UI URL is unchanged.
 
 Phase 02 also adds SQLite-backed conversations + messages — the previous in-memory `Map`-backed conversations no longer survive container restarts.
+
+## Behavior changes from Phase 02 → Phase 03
+
+Phase 03 is **mostly additive** (no existing endpoint paths change), but two behavior changes are worth knowing about:
+
+1. **Default expand mode is now `auto`.** Every `/api/chat/stream` request now runs the agentic loop unless the caller explicitly passes `expand=none`, `expand=siblings`, or `expand=sections`. The Phase 02 default was `none`. The SPA's toolbar reflects the same change: the new expand-mode chip defaults to `Auto`. If your existing scripts / automations were relying on the non-agentic fast path, pass `"expand":"none"` explicitly to keep Phase 02 behavior.
+2. **Tool calls are streamed live + persisted.** The `/api/chat/stream` SSE envelope gains two new event types (`tool_call`, `tool_result`) on the agentic path. Persisted assistant messages gain a `tool_calls` column (JSON-encoded array). The wire shape for the original events (`meta`, `sources`, `token`, `done`, `title`, `error`) is unchanged.
+
+The non-streaming `/api/chat` endpoint keeps its `expand=none` default and Phase 02 behavior. Phase 03 doesn't run the agent loop on `/api/chat` — only on `/api/chat/stream`.
 
 ---
 
@@ -306,28 +334,41 @@ src/
   services/
     parser.ts            Dispatcher → returns ParsedDocument { text, blocks[], ... }
     embed.ts             Ollama embeddings with retry + parallel + real isOllamaAvailable
-    qdrant.ts            client.query, payload indexes, filter builder, expandHits
-    openai-api-wrapper.ts  Chat completions + RAG context preparation
-    conversations.ts     SQLite-backed ConversationStore (CRUD, title-source rules)
+    qdrant.ts            client.query, payload indexes, filter builder, expandHits,
+                         deleteByFilePath, fetchByFilePathAnd*
+    openai-api-wrapper.ts  Chat completions + RAG context preparation +
+                         streamChatCompletionWithTools
+    conversations.ts     SQLite-backed ConversationStore (CRUD, title-source
+                         rules, toolCalls persistence)
     stream-chat.ts       Embed → search → prompt → token orchestrator (FR-17..20)
+    agent-tools.ts       The four LLM-callable retrieval tools + AGENT_TOOLS
+    agent-loop.ts        Bounded agent loop generator
+                         (sources / token / tool_call / tool_result / done)
+    document-store.ts    SQLite-backed DocumentStore CRUD (p3-T01)
     title-generator.ts   LLM-driven title generation with fallback (FR-14, FR-15)
   db/
     index.ts             better-sqlite3 singleton (WAL + FK), lazy dir create
     migrate.ts           Hand-rolled migration runner (idempotent, sorted NNN_*.sql)
-    migrations/          001_init.sql, 002_title_source.sql
+    migrations/          001_init.sql, 002_title_source.sql,
+                         003_documents.sql, 004_tool_calls.sql
   utils/
     chunk-types.ts       ChunkOptions, Chunk, env defaults
     chunk-tokenizer.ts   countTokens + sentence splitter + abbreviation handling
     chunk-structural.ts  Block-aware chunker (the main one)
     chunk-semantic.ts    Cosine-similarity-based semantic split
     chunk.ts             Public API: chunkBlocks / chunkText / chunkMarkdown
+    text-token-budget.ts countTokens + truncateToTokenBudget (Phase 03 —
+                         used by the agent loop's per-iteration tool-result cap)
     logger.ts            Pino with per-component child loggers + truncateForLog
   routes/
     api-health.ts        GET  /api/health
-    api-status.ts        GET  /api/status (chunks + ollamaAvailable)
+    api-status.ts        GET  /api/status (chunks + ollamaAvailable + documents)
     api-sessions.ts      POST/GET/PATCH/DELETE on /api/sessions[/:id[/messages]]
+    api-documents.ts     GET /api/documents, DELETE /api/documents/:fileId
     chat.ts              POST /api/chat (non-stream)
-    chat-stream.ts       POST /api/chat/stream (SSE)
+    chat-stream.ts       POST /api/chat/stream (SSE; dispatches to agent loop
+                         when expand=auto; falls back to non-agentic on
+                         tools_not_supported)
     upload.ts            POST /api/upload (publishes events to uploadBus)
     upload-progress.ts   GET  /api/upload/progress (SSE)
     search.ts            /api/search and /api/search/rag (filters + expand)
@@ -338,17 +379,29 @@ src/
 
 web/
   src/
-    components/          Bubble, Composer, Dropzone, QueueRow, Sidebar, TopBar
-    routes/              Chat.tsx, Upload.tsx
-    services/            sessions.ts, stream.ts, markdown.ts
+    components/          Bubble, Composer, DocumentsList, Dropzone, QueueRow,
+                         Sidebar, SourceDrawer, TopBar, ToolCallChip,
+                         ToolResultChip
+    routes/              Chat.tsx (expand-mode toggle), Upload.tsx
+    services/            documents.ts, sessions.ts, status.ts, stream.ts,
+                         markdown.ts, upload.ts
     styles/              tokens.css, base.css, animations.css, bubble.css, ...
-  tests/                 vitest (happy-dom) — markdown, sessions, stream
+    types.d.ts           SPA-side type mirrors (ToolCallRecord)
+  tests/                 vitest (happy-dom) — Bubble, Chat (expand-mode),
+                         DocumentsList, Sidebar, SourceDrawer, ToolCallChip,
+                         ToolResultChip, services (markdown, sessions, status,
+                         stream, upload)
 
 tests/
   db/                    SQLite singleton + migration runner
   parser/                Markdown + text parser tests
-  services/              Embed, Qdrant, parser dispatcher, OpenAI wrapper, stream-chat
-  routes/                fastify.inject-based route tests (api-health, upload, chat, search, spa-fallback)
+  services/              Embed, Qdrant, parser dispatcher, OpenAI wrapper,
+                         stream-chat, title-generator, conversations,
+                         document-store, agent-tools, agent-loop,
+                         text-token-budget
+  routes/                fastify.inject-based route tests (api-health,
+                         api-documents, api-sessions, api-status, chat,
+                         chat-stream, download, search, spa-fallback, upload)
   e2e/                   parse-and-chunk end-to-end
   test-helpers.ts        Shared mocks
 ```

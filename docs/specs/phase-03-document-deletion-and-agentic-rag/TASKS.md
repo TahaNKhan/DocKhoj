@@ -84,7 +84,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Unit test: `get_neighbor_chunks` with `range > 5` clamps to 5.
 - **Depends on:** p3-T02, p3-T04 (DocumentStore exists)
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done (commit `bdc9fce`)
 
 ---
 
@@ -99,7 +99,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Unit test: `signal.aborted` between chunks → generator returns cleanly.
 - **Depends on:** —
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done (commit `01af75e`)
 
 ---
 
@@ -117,7 +117,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Unit test (OpenAI stream throws): yields `event: error`; generator returns.
 - **Depends on:** p3-T05, p3-T06
 - **Estimate:** L
-- **Status:** todo
+- **Status:** done (commit `5b5a102`)
 
 ---
 
@@ -134,7 +134,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - E2E (stubbed LLM via `LLM_BASE_URL` env override): real SSE stream includes `tool_call`/`tool_result` events; persisted message has `tool_calls` column populated.
 - **Depends on:** p3-T04, p3-T07
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done (commit `5b5a102`)
 
 ---
 
@@ -150,7 +150,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Unit test for `stream.ts` parser: hand-crafted SSE chunk with `event: tool_call\ndata: {...}\n\n` is parsed correctly; new event types are dispatched.
 - **Depends on:** p3-T08
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done (commit `4169f49`)
 
 ---
 
@@ -169,7 +169,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Route test: `POST /api/chat/stream` with `expand=siblings` → handler dispatches to `streamChatCompletion` with siblings mode.
 - **Depends on:** —
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done (commit `6cb13a1` + this commit)
 
 ---
 
@@ -187,7 +187,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - README updated; user signs off.
 - **Depends on:** p3-T01, p3-T02, p3-T03, p3-T04, p3-T05, p3-T06, p3-T07, p3-T08, p3-T09, p3-T10
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done (this commit)
 
 ---
 

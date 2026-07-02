@@ -7,22 +7,27 @@ import { dirname, resolve } from 'node:path';
 // level.
 import preact from './web/node_modules/@preact/preset-vite/dist/esm/index.mjs';
 
-// p2-T20 — coverage thresholds + README + final verification.
+// Phase 03 / p3-T11 — coverage thresholds + README + final integration.
 //
 // Coverage targets (lines):
-//   - Project overall:              ≥ 80%
-//   - src/db/**                     ≥ 80% (per-glob)
-//   - src/services/conversations.ts: ≥ 80% (per-file)
-//   - src/services/stream-chat.ts:  ≥ 80% (per-file)
+//   - Project overall:                ≥ 80%
+//   - src/db/**                       ≥ 80% (per-glob)
+//   - src/services/conversations.ts:  ≥ 80% (per-file)
+//   - src/services/stream-chat.ts:    ≥ 80% (per-file)
+//   - Phase 03 surfaces (per-file, ≥ 80%):
+//       src/services/document-store.ts
+//       src/services/agent-tools.ts
+//       src/services/agent-loop.ts
+//       src/services/openai-api-wrapper.ts   (streamChatCompletionWithTools additions)
+//       src/routes/api-documents.ts
+//       src/utils/text-token-budget.ts
 //
-// Note: component tests were removed in T40. The web services
-// (markdown, sessions, stream) still need test coverage — they're
-// tiny pure functions / fetch wrappers. They live under web/tests/
-// and run in the `web` vitest project; that project isn't part of
-// the thresholded coverage report because the v8 coverage worker
-// can't resolve the workspace's happy-dom from the root. The web
-// tests still execute on every `npm test` run; web-only behaviour
-// is also validated end-to-end via `./restart.sh` + curl.
+// Note: component tests live under web/tests/ and run in the `web`
+// vitest project; that project isn't part of the thresholded
+// coverage report because the v8 coverage worker can't resolve the
+// workspace's happy-dom from the root. Web tests still execute on
+// every `npm test` run; web-only behaviour is also validated
+// end-to-end via `./restart.sh` + curl.
 //
 // Workspace setup: the web/ project owns its own node_modules and
 // uses happy-dom; the node project covers the Fastify server. We
@@ -37,6 +42,13 @@ const PER_MODULE_THRESHOLDS = {
   'src/db/**': { lines: 80 },
   'src/services/conversations.ts': { lines: 80 },
   'src/services/stream-chat.ts': { lines: 80 },
+  // Phase 03 surfaces — see comment above
+  'src/services/document-store.ts': { lines: 80 },
+  'src/services/agent-tools.ts': { lines: 80 },
+  'src/services/agent-loop.ts': { lines: 80 },
+  'src/services/openai-api-wrapper.ts': { lines: 80 },
+  'src/routes/api-documents.ts': { lines: 80 },
+  'src/utils/text-token-budget.ts': { lines: 80 },
 } as const;
 
 export default defineConfig({
