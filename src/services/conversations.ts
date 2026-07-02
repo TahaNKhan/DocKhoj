@@ -34,7 +34,23 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   sources?: Source[];
+  // Phase 03 / p3-T04: present on agentic assistant messages.
+  // `undefined` (treated as absent) on plain assistant messages.
+  toolCalls?: ToolCallRecord[];
   createdAt: string;
+}
+
+// Phase 03 / p3-T04: persisted tool-call records on agentic
+// assistant messages. Nullable on the message (`undefined` when
+// the assistant didn't use tools). The shape mirrors what the
+// agent loop produces and what the SPA's ToolCallChip /
+// ToolResultChip components render.
+export interface ToolCallRecord {
+  name: string;
+  arguments: Record<string, unknown>;
+  result: unknown;
+  truncated: boolean;
+  iteration: number;
 }
 
 export interface Source {
@@ -164,7 +180,8 @@ export class ConversationStore {
   appendAssistantMessage(
     conversationId: string,
     content: string,
-    sources: Source[]
+    sources: Source[],
+    toolCalls?: ToolCallRecord[]
   ): Message {
     const msg: Message = {
       id: uuidv4(),
@@ -174,7 +191,7 @@ export class ConversationStore {
       sources,
       createdAt: nowIso(),
     };
-    this.writeMessage(msg);
+    this.writeMessage(msg, toolCalls);
     this.bumpUpdatedAt(conversationId);
     return this.readMessage(msg.id)!;
   }
@@ -182,7 +199,7 @@ export class ConversationStore {
   listMessages(conversationId: string): Message[] {
     const rows = this.db
       .prepare(
-        `SELECT id, conversation_id, role, content, sources, created_at
+        `SELECT id, conversation_id, role, content, sources, tool_calls, created_at
          FROM messages
          WHERE conversation_id = ?
          ORDER BY created_at ASC, rowid ASC`
@@ -193,6 +210,7 @@ export class ConversationStore {
       role: 'user' | 'assistant';
       content: string;
       sources: string | null;
+      tool_calls: string | null;
       created_at: string;
     }>;
     return rows.map((r) => ({
@@ -201,6 +219,7 @@ export class ConversationStore {
       role: r.role,
       content: r.content,
       sources: r.sources ? (JSON.parse(r.sources) as Source[]) : undefined,
+      toolCalls: r.tool_calls ? (JSON.parse(r.tool_calls) as ToolCallRecord[]) : undefined,
       createdAt: r.created_at,
     }));
   }
@@ -258,11 +277,11 @@ export class ConversationStore {
 
   // ----- Internals -----
 
-  private writeMessage(msg: Message): void {
+  private writeMessage(msg: Message, toolCalls?: ToolCallRecord[]): void {
     this.db
       .prepare(
-        `INSERT INTO messages (id, conversation_id, role, content, sources, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`
+        `INSERT INTO messages (id, conversation_id, role, content, sources, tool_calls, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         msg.id,
@@ -270,6 +289,7 @@ export class ConversationStore {
         msg.role,
         msg.content,
         msg.sources ? JSON.stringify(msg.sources) : null,
+        toolCalls ? JSON.stringify(toolCalls) : null,
         msg.createdAt
       );
   }
@@ -277,7 +297,7 @@ export class ConversationStore {
   private readMessage(id: string): Message | null {
     const row = this.db
       .prepare(
-        `SELECT id, conversation_id, role, content, sources, created_at
+        `SELECT id, conversation_id, role, content, sources, tool_calls, created_at
          FROM messages WHERE id = ?`
       )
       .get(id) as
@@ -287,6 +307,7 @@ export class ConversationStore {
           role: 'user' | 'assistant';
           content: string;
           sources: string | null;
+          tool_calls: string | null;
           created_at: string;
         }
       | undefined;
@@ -297,6 +318,7 @@ export class ConversationStore {
       role: row.role,
       content: row.content,
       sources: row.sources ? (JSON.parse(row.sources) as Source[]) : undefined,
+      toolCalls: row.tool_calls ? (JSON.parse(row.tool_calls) as ToolCallRecord[]) : undefined,
       createdAt: row.created_at,
     };
   }

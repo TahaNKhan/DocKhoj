@@ -110,6 +110,91 @@ describe('ConversationStore', () => {
       expect(reloaded[0].sources).toEqual(sources);
     });
 
+    // Phase 03 / p3-T04 — toolCalls persistence.
+    it('appendAssistantMessage persists toolCalls when provided', () => {
+      const s = store.create();
+      const toolCalls = [
+        {
+          name: 'get_section_chunks',
+          arguments: { filePath: 'a.md', headingPath: ['Chapter 2'] },
+          result: { kind: 'chunks', chunks: [{ chunkId: 'c1', text: 'hi' }], truncated: false },
+          truncated: false,
+          iteration: 0,
+        },
+      ];
+      const m = store.appendAssistantMessage(s.id, 'reply', [], toolCalls);
+      expect(m.role).toBe('assistant');
+      expect(m.toolCalls).toEqual(toolCalls);
+
+      const reloaded = store.listMessages(s.id);
+      expect(reloaded[0].toolCalls).toEqual(toolCalls);
+    });
+
+    it('appendAssistantMessage without toolCalls leaves the column undefined', () => {
+      const s = store.create();
+      const m = store.appendAssistantMessage(s.id, 'reply', []);
+      expect(m.toolCalls).toBeUndefined();
+
+      const reloaded = store.listMessages(s.id);
+      expect(reloaded[0].toolCalls).toBeUndefined();
+    });
+
+    it('tool_calls column is NULL on pre-Phase-03 messages (read paths tolerate NULL)', () => {
+      // Simulate a message written before the migration by inserting
+      // directly with tool_calls = NULL.
+      const s = store.create();
+      store.appendUserMessage(s.id, 'hi');
+      const insertedAt = new Date()
+        .toISOString()
+        .replace('T', ' ')
+        .replace(/\.\d{3}Z$/, '');
+      db
+        .prepare(
+          `INSERT INTO messages (id, conversation_id, role, content, sources, tool_calls, created_at)
+           VALUES (?, ?, 'assistant', 'legacy reply', NULL, NULL, ?)`
+        )
+        .run('legacy-msg', s.id, insertedAt);
+
+      const list = store.listMessages(s.id);
+      const legacy = list.find((m) => m.id === 'legacy-msg');
+      expect(legacy).toBeDefined();
+      expect(legacy!.toolCalls).toBeUndefined();
+      expect(legacy!.sources).toBeUndefined();
+    });
+
+    it('preserves toolCalls ordering across iterations', () => {
+      const s = store.create();
+      const toolCalls = [
+        {
+          name: 'get_neighbor_chunks',
+          arguments: { filePath: 'a.md', chunkIndex: 5 },
+          result: { kind: 'chunks', chunks: [], truncated: false },
+          truncated: false,
+          iteration: 0,
+        },
+        {
+          name: 'get_document',
+          arguments: { filePath: 'b.md' },
+          result: { kind: 'document', document: null },
+          truncated: false,
+          iteration: 1,
+        },
+        {
+          name: 'get_chunk',
+          arguments: { chunkId: 'c1' },
+          result: { kind: 'error', code: 'NOT_FOUND', message: 'gone' },
+          truncated: true,
+          iteration: 2,
+        },
+      ];
+      store.appendAssistantMessage(s.id, 'final answer', [], toolCalls);
+
+      const reloaded = store.listMessages(s.id);
+      expect(reloaded[0].toolCalls).toHaveLength(3);
+      expect(reloaded[0].toolCalls!.map((tc) => tc.iteration)).toEqual([0, 1, 2]);
+      expect(reloaded[0].toolCalls![2].truncated).toBe(true);
+    });
+
     it('listMessages returns chronological order', async () => {
       const s = store.create();
       store.appendUserMessage(s.id, 'first');
