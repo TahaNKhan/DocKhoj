@@ -29,6 +29,7 @@ import {
   createChatCompletion,
   chatWithDocuments,
   streamChatCompletionRaw,
+  streamChatCompletionWithTools,
   getLlmContextSize,
 } from '../../src/services/openai-api-wrapper.js';
 
@@ -129,6 +130,187 @@ describe('streamChatCompletionRaw', () => {
     const collected: string[] = [];
     for await (const ev of streamChatCompletionRaw([], ac.signal)) collected.push(ev.text);
     expect(collected.join('')).toBe('ab');
+  });
+});
+
+describe('streamChatCompletionWithTools', () => {
+  beforeEach(() => mockCreate.mockReset());
+
+  it('yields one frame per OpenAI chunk with text + accumulated toolCalls', async () => {
+    async function* fakeStream() {
+      yield { choices: [{ delta: { content: 'Hel' } }] };
+      yield { choices: [{ delta: { content: 'lo ' } }] };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'call_a', function: { name: 'get_chunk', arguments: '{"chunk' } },
+              ],
+            },
+          },
+        ],
+      };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [{ index: 0, function: { arguments: 'Id":"x"}' } }],
+            },
+          },
+        ],
+      };
+      yield { choices: [{ delta: { content: ' done' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(fakeStream());
+
+    const ac = new AbortController();
+    const frames: Array<{ text: string; toolCalls: ReturnType<typeof Object>[] }> = [];
+    for await (const ev of streamChatCompletionWithTools(
+      [{ role: 'user', content: 'hi' }],
+      [
+        {
+          type: 'function',
+          function: { name: 'get_chunk', description: 'd', parameters: { type: 'object', properties: {} } },
+        },
+      ],
+      ac.signal
+    )) {
+      frames.push({ text: ev.text, toolCalls: ev.toolCalls as unknown as ReturnType<typeof Object>[] });
+    }
+
+    // 5 frames total.
+    expect(frames).toHaveLength(5);
+    // text deltas are passed through.
+    expect(frames.map((f) => f.text)).toEqual(['Hel', 'lo ', '', '', ' done']);
+    // tool_calls accumulator empty until the third frame, then partial, then complete.
+    expect(frames[0]!.toolCalls).toEqual([]);
+    expect(frames[1]!.toolCalls).toEqual([]);
+    expect(frames[2]!.toolCalls).toEqual([
+      { index: 0, id: 'call_a', name: 'get_chunk', arguments: '{"chunk' },
+    ]);
+    expect(frames[3]!.toolCalls).toEqual([
+      { index: 0, id: 'call_a', name: 'get_chunk', arguments: '{"chunkId":"x"}' },
+    ]);
+    // Last frame still carries the tool calls (in case more chunks arrive).
+    expect(frames[4]!.toolCalls).toEqual([
+      { index: 0, id: 'call_a', name: 'get_chunk', arguments: '{"chunkId":"x"}' },
+    ]);
+  });
+
+  it('accumulates multiple tool_calls in one chunk + across chunks', async () => {
+    async function* fakeStream() {
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, id: 'c0', function: { name: 'foo', arguments: '{"a":' } },
+                { index: 1, id: 'c1', function: { name: 'bar', arguments: '{"b"' } },
+              ],
+            },
+          },
+        ],
+      };
+      yield {
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                { index: 0, function: { arguments: '1}' } },
+                { index: 1, function: { arguments: ':2}' } },
+              ],
+            },
+          },
+        ],
+      };
+    }
+    mockCreate.mockResolvedValueOnce(fakeStream());
+    const ac = new AbortController();
+    const finalToolCalls: Array<{ index: number; id?: string; name?: string; arguments: string }> = [];
+    for await (const ev of streamChatCompletionWithTools([], [], ac.signal)) {
+      // Track the last accumulation we see.
+      for (const tc of ev.toolCalls) {
+        finalToolCalls[tc.index] = { ...tc };
+      }
+    }
+    expect(finalToolCalls).toHaveLength(2);
+    expect(finalToolCalls[0]).toEqual({ index: 0, id: 'c0', name: 'foo', arguments: '{"a":1}' });
+    expect(finalToolCalls[1]).toEqual({ index: 1, id: 'c1', name: 'bar', arguments: '{"b":2}' });
+  });
+
+  it('returns cleanly when signal is aborted between chunks', async () => {
+    const ac = new AbortController();
+    async function* fakeStream() {
+      yield { choices: [{ delta: { content: 'a' } }] };
+      // Simulate slow chunk — caller aborts during the wait.
+      yield { choices: [{ delta: { content: 'b' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(fakeStream());
+
+    const collected: string[] = [];
+    for await (const ev of streamChatCompletionWithTools([], [], ac.signal)) {
+      collected.push(ev.text);
+      ac.abort();
+    }
+    // After abort we exit the loop on the next iteration's check.
+    // We expect at most one chunk to land before returning.
+    expect(collected.length).toBeLessThanOrEqual(1);
+    expect(ac.signal.aborted).toBe(true);
+  });
+
+  it('passes stream:true + tools + signal to openai.chat.completions.create', async () => {
+    async function* fakeStream() {
+      yield { choices: [{ delta: { content: 'hello' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(fakeStream());
+
+    const ac = new AbortController();
+    const tools = [
+      {
+        type: 'function' as const,
+        function: { name: 'foo', description: 'd', parameters: { type: 'object' as const, properties: {} } },
+      },
+    ];
+    for await (const _ev of streamChatCompletionWithTools(
+      [{ role: 'user', content: 'q' }],
+      tools,
+      ac.signal
+    )) {
+      // consume one frame
+      break;
+    }
+
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ stream: true, tools }),
+      expect.objectContaining({ signal: ac.signal })
+    );
+  });
+
+  it('a stream with no tool_calls yields toolCalls: [] throughout', async () => {
+    async function* fakeStream() {
+      yield { choices: [{ delta: { content: 'plain text only' } }] };
+    }
+    mockCreate.mockResolvedValueOnce(fakeStream());
+
+    const ac = new AbortController();
+    const frames: Array<{ text: string; toolCalls: unknown[] }> = [];
+    for await (const ev of streamChatCompletionWithTools([], [], ac.signal)) {
+      frames.push({ text: ev.text, toolCalls: ev.toolCalls });
+    }
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.text).toBe('plain text only');
+    expect(frames[0]!.toolCalls).toEqual([]);
+  });
+
+  it('lets the caller observe a `tools not supported` SDK error', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('tools param not supported'));
+    const ac = new AbortController();
+    await expect(async () => {
+      for await (const _ev of streamChatCompletionWithTools([], [], ac.signal)) {
+        // unreachable
+      }
+    }).rejects.toThrow(/tools param not supported/);
   });
 });
 

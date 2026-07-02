@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions.js';
 import { llmLog as log } from '../utils/logger.js';
 
 const openai = new OpenAI({
@@ -243,4 +244,98 @@ export async function* streamChatCompletionRaw(
     const text = chunk.choices?.[0]?.delta?.content ?? '';
     if (text) yield { text };
   }
+}
+
+// Phase 03 / p3-T06 — streaming chat completion with the LLM's tool-use
+// loop enabled (FR-14, FR-18).
+//
+// The OpenAI SDK streams `delta.content` as text deltas (same as
+// streamChatCompletionRaw) AND `delta.tool_calls[]` as partial tool
+// calls per chunk. Each partial has an `index` (final position in the
+// tool_calls array) and incremental `id` / `function.name` /
+// `function.arguments` fields. We accumulate across chunks and emit
+// a snapshot per chunk so the caller can stream-progress tool calls if
+// it wants; the final accumulator after stream-end is the source of
+// truth the agent loop acts on.
+//
+// Yielded shape:
+//   { text: string; toolCalls: ToolCallDelta[] }
+//
+// `text` is the new text delta only (empty string when the chunk had
+// no content). `toolCalls` is the accumulated array — empty when the
+// chunk had no tool_calls; otherwise the full set of completed-final
+// or in-progress call records at that point. The caller should treat
+// the *last* `toolCalls` snapshot after stream-end as the finalized
+// list (intermediate snapshots may be partially-formed mid-function).
+export interface ToolCallDelta {
+  index: number;
+  id?: string;
+  name?: string;
+  arguments: string;
+}
+
+export async function* streamChatCompletionWithTools(
+  messages: ChatCompletionMessageParam[],
+  tools: ChatCompletionTool[],
+  signal: AbortSignal
+): AsyncGenerator<{ text: string; toolCalls: ToolCallDelta[] }> {
+  log.debug(
+    { model: LLM_MODEL, messageCount: messages.length, toolCount: tools.length },
+    'Starting streaming completion with tools'
+  );
+
+  const stream = await openai.chat.completions.create(
+    {
+      model: LLM_MODEL,
+      messages,
+      tools,
+      temperature: 0.3,
+      max_tokens: 1000,
+      stream: true,
+    },
+    { signal }
+  );
+
+  // ToolCall accumulator indexed by the SDK's `index` field. Each
+  // position in the final tool_calls array receives incremental
+  // pieces (id, name, arguments) across one-or-more chunks. We hold
+  // them here so the caller can see a stable snapshot each yield.
+  const calls: ToolCallDelta[] = [];
+
+  for await (const chunk of stream) {
+    if (signal.aborted) {
+      log.info('streamChatCompletionWithTools: abort observed mid-stream');
+      return;
+    }
+
+    const choice = chunk.choices?.[0];
+    if (!choice) continue;
+
+    const delta = choice.delta;
+    const text = (delta?.content ?? '') as string;
+    const partials = delta?.tool_calls;
+
+    if (partials && partials.length > 0) {
+      for (const p of partials) {
+        const idx = typeof p.index === 'number' ? p.index : 0;
+        if (!calls[idx]) {
+          calls[idx] = { index: idx, arguments: '' };
+        }
+        const slot = calls[idx]!;
+        if (p.id) slot.id = p.id;
+        if (p.function?.name) slot.name = p.function.name;
+        if (typeof p.function?.arguments === 'string') {
+          slot.arguments += p.function.arguments;
+        }
+      }
+    }
+
+    // Snapshot — text delta plus the full accumulator so far.
+    yield { text, toolCalls: calls.map((c) => ({ ...c, arguments: c.arguments })) };
+  }
+
+  // After stream-end we deliberately do NOT yield an extra frame; the
+  // last yield in the loop above already carries the full
+  // accumulator. If the SDK never emitted tool_calls for this stream,
+  // `calls` stays empty and the caller sees `toolCalls: []`.
 }
