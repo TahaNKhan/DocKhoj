@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DocKhoj</title>
+    <!-- Pin all relative URLs (favicons, etc.) to the site root regardless
+         of the SPA path the document is served from. vite-plugin-singlefile
+         rewrites /favicon.svg to ./favicon.svg in the bundled HTML, so
+         without this a request from /chat would resolve to /chat/favicon.svg
+         and hit the SPA fallback (text/html) instead of the real icon. -->
+    <base href="/" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
   </head>
   <body>
     <div id="app"></div>

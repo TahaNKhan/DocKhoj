@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="DocKhoj">
+  <title>DocKhoj</title>
+  <!-- Brand surface tile: matches the bg token in web/src/styles/tokens.css -->
+  <rect width="64" height="64" rx="14" fill="#0a0908"/>
+
+  <!-- Document body with a folded top-right corner: matches the paper token -->
+  <path d="M12 10 H34 L46 22 V50 a4 4 0 0 1 -4 4 H12 a4 4 0 0 1 -4 -4 V14 a4 4 0 0 1 4 -4 Z"
+        fill="#ece4d4"/>
+  <!-- Folded corner triangle, one step darker than the paper face -->
+  <path d="M34 10 V22 H46 Z" fill="#d8d0c4"/>
+
+  <!-- Document content lines: matches the muted token -->
+  <rect x="13" y="29" width="20" height="2" rx="1" fill="#8a8278"/>
+  <rect x="13" y="34" width="26" height="2" rx="1" fill="#8a8278"/>
+  <rect x="13" y="39" width="18" height="2" rx="1" fill="#8a8278"/>
+  <rect x="13" y="44" width="22" height="2" rx="1" fill="#8a8278"/>
+
+  <!-- Magnifying glass: terracotta lens ring plus handle (accent token) -->
+  <circle cx="42" cy="42" r="10" fill="#0a0908"/>
+  <circle cx="42" cy="42" r="10" fill="none" stroke="#e25540" stroke-width="4"/>
+  <line x1="49.5" y1="49.5" x2="56" y2="56"
+        stroke="#e25540" stroke-width="4" stroke-linecap="round"/>
+</svg>
