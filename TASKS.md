@@ -507,9 +507,42 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 
 ---
 
+# Phase 03 — Document Deletion and Agentic RAG
+
+Spec: [`docs/specs/phase-03-document-deletion-and-agentic-rag/`](./docs/specs/phase-03-document-deletion-and-agentic-rag/).
+
+## Status
+
+- **Planning.** Spec folder written (README + requirements + design + TASKS); awaiting user sign-off before implementation begins.
+- Tasks live in the spec folder: `docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md` (T44 … T56). The entries below are summary pointers only.
+- Open questions (`docs/specs/phase-03-document-deletion-and-agentic-rag/requirements.md` → Open questions) need user input before / during implementation.
+
+## Track A — Document deletion
+
+- **T44** — `documents` table + `DocumentStore` + upload wiring + status count.
+- **T45** — Qdrant `deleteByFilePath` + `/api/documents` routes.
+- **T46** — SPA: `DocumentsList` + integrate into `/upload`.
+
+## Track B — Agentic RAG
+
+- **T47** — Migration `004_tool_calls.sql` + `ConversationStore.appendAssistantMessage(...toolCalls)`.
+- **T48** — `services/agent-tools.ts` (the four tool implementations).
+- **T49** — `streamChatCompletionWithTools` in `openai-api-wrapper.ts`.
+- **T50** — `services/agent-loop.ts` (bounded loop, token cap).
+- **T51** — `routes/chat-stream.ts` extended to dispatch to agentic path; persist `toolCalls`.
+- **T52** — Client SSE: `tool_call`/`tool_result` handling + bubble chips.
+- **T53** — Chat toolbar: expand-mode toggle.
+
+## Wrap-up
+
+- **T54** — Coverage thresholds + README updates + final integration test pass.
+
+---
+
 ## Notes
 
 - Every commit must run the test suite and pass before being marked `done` (per standing CLAUDE.md §3).
 - If reality diverges from design during implementation, update `design.md` first, then code.
 - If a task turns out to be larger than estimated, split it here rather than letting it sprawl.
-- Phase 01 task entries are historical record. Their `Status:` fields were left as `done` (manually flipped from the stale `todo`) to reflect the spec README; consult the git log for commit-level detail.
+- Phase 01 and Phase 02 task entries are historical record. Their `Status:` fields reflect the spec README (`done`); consult the git log for commit-level detail.
+- Phase 03 tasks live in `docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md`. The summary list above is for at-a-glance navigation only.
