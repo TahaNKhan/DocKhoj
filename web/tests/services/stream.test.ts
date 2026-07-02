@@ -225,4 +225,87 @@ describe('openChatStream', () => {
     const err = collected[0] as Extract<StreamEvent, { type: 'error' }>;
     expect(err.message).toBe('upstream failed');
   });
+
+  it('parses tool_call events from the agent path (p3-T09)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sseStream([
+        'event: tool_call\ndata: {"name":"get_chunk","arguments":{"chunkId":"c1"},"iteration":0}\n\n',
+        'event: tool_call\ndata: {"name":"get_document","arguments":{"filePath":"a.md"},"iteration":1}\n\n',
+      ])
+    );
+
+    const collected: StreamEvent[] = [];
+    await new Promise<void>((resolve) => {
+      openChatStream({ q: 'q' }, {
+        onEvent: (ev) => collected.push(ev),
+        onClose: () => resolve(),
+      });
+    });
+
+    expect(collected).toHaveLength(2);
+    const tc0 = collected[0] as Extract<StreamEvent, { type: 'tool_call' }>;
+    expect(tc0.name).toBe('get_chunk');
+    expect(tc0.arguments).toEqual({ chunkId: 'c1' });
+    expect(tc0.iteration).toBe(0);
+    const tc1 = collected[1] as Extract<StreamEvent, { type: 'tool_call' }>;
+    expect(tc1.name).toBe('get_document');
+    expect(tc1.iteration).toBe(1);
+  });
+
+  it('parses tool_result events with the truncated flag and result payload (p3-T09)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sseStream([
+        'event: tool_result\ndata: {"name":"get_chunk","result":{"kind":"chunks","chunks":[],"truncated":false},"truncated":false,"iteration":0}\n\n',
+      ])
+    );
+
+    const collected: StreamEvent[] = [];
+    await new Promise<void>((resolve) => {
+      openChatStream({ q: 'q' }, {
+        onEvent: (ev) => collected.push(ev),
+        onClose: () => resolve(),
+      });
+    });
+
+    expect(collected).toHaveLength(1);
+    const tr = collected[0] as Extract<StreamEvent, { type: 'tool_result' }>;
+    expect(tr.name).toBe('get_chunk');
+    expect(tr.iteration).toBe(0);
+    expect(tr.truncated).toBe(false);
+    expect(tr.result).toMatchObject({ kind: 'chunks' });
+  });
+
+  it('parses a full agent SSE envelope in order: meta → sources → tool_call → tool_result → token → done', async () => {
+    fetchMock.mockResolvedValueOnce(
+      sseStream([
+        'event: meta\ndata: {"sessionId":"s1","userMessageId":"u1"}\n\n',
+        'event: sources\ndata: {"sources":[{"fileName":"a.md","filePath":"a.md","chunk":"x","score":0.9}]}\n\n',
+        'event: tool_call\ndata: {"name":"get_chunk","arguments":{"chunkId":"c1"},"iteration":0}\n\n',
+        'event: tool_result\ndata: {"name":"get_chunk","result":{"kind":"chunks","chunks":[]},"truncated":false,"iteration":0}\n\n',
+        'event: token\ndata: {"text":"answer"}\n\n',
+        'event: done\ndata: {"messageId":"m1","iterations":2}\n\n',
+      ])
+    );
+
+    const collected: StreamEvent[] = [];
+    await new Promise<void>((resolve) => {
+      openChatStream({ q: 'q' }, {
+        onEvent: (ev) => collected.push(ev),
+        onClose: () => resolve(),
+      });
+    });
+
+    expect(collected.map((e) => e.type)).toEqual([
+      'meta',
+      'sources',
+      'tool_call',
+      'tool_result',
+      'token',
+      'done',
+    ]);
+    const done = collected.find((e) => e.type === 'done') as
+      | Extract<StreamEvent, { type: 'done' }>
+      | undefined;
+    expect(done?.iterations).toBe(2);
+  });
 });

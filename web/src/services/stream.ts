@@ -6,6 +6,11 @@
 //   event: <name>\ndata: <json>\n\n
 //
 // The parser buffers partial frames so a chunked transfer is fine.
+//
+// Phase 03 / p3-T09 — added `event: tool_call` and
+// `event: tool_result` to the recognized event set. Both carry the
+// `iteration` field for ordering; the SPA renders each as a chip
+// below the assistant bubble when `toolCalls` is present.
 
 export interface StreamSource {
   fileName: string;
@@ -20,7 +25,20 @@ export type StreamEvent =
   | { type: 'meta'; sessionId: string; userMessageId: string }
   | { type: 'sources'; sources: StreamSource[] }
   | { type: 'token'; text: string }
-  | { type: 'done'; messageId?: string }
+  | {
+      type: 'tool_call';
+      name: string;
+      arguments: Record<string, unknown>;
+      iteration: number;
+    }
+  | {
+      type: 'tool_result';
+      name: string;
+      result: unknown;
+      truncated: boolean;
+      iteration: number;
+    }
+  | { type: 'done'; messageId?: string; iterations?: number }
   | { type: 'title'; sessionId: string; title: string }
   | { type: 'error'; message: string };
 

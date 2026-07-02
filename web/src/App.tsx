@@ -19,6 +19,7 @@ import {
 import { openChatStream, type StreamSource } from './services/stream';
 import { fetchStatus, type ServerStatus } from './services/status';
 import type { Source } from './components/Bubble';
+import type { ToolCallRecord } from './types';
 
 // App — top-level chrome (background layers, TopBar, layout split).
 // Session state lives here (not inside the chat route) so the Sidebar
@@ -191,6 +192,11 @@ export function App() {
     });
 
     let acc = '';
+    // Local tool-call accumulator (p3-T09). The agent loop pairs
+    // `tool_call` (BEFORE execution) with `tool_result` (AFTER). We
+    // stash pending calls here and attach the result when the
+    // matching `tool_result` arrives.
+    let pendingToolCalls: Partial<ToolCallRecord>[] = [];
     streamRef.current = openChatStream(
       { q: text, sessionId: activeId },
       {
@@ -219,6 +225,27 @@ export function App() {
           } else if (ev.type === 'token') {
             acc += ev.text;
             setPending((p) => (p ? { ...p, aiText: acc } : p));
+          } else if (ev.type === 'tool_call') {
+            pendingToolCalls.push({
+              name: ev.name,
+              arguments: ev.arguments,
+              iteration: ev.iteration,
+            });
+            setPending((p) =>
+              p ? { ...p, toolCalls: pendingToolCalls.slice() as ToolCallRecord[] } : p
+            );
+          } else if (ev.type === 'tool_result') {
+            // Attach the result to the most-recent pending call
+            // (the route handler emits them in pairs; we trust the
+            // order).
+            const last = pendingToolCalls[pendingToolCalls.length - 1];
+            if (last && last.name === ev.name) {
+              last.result = ev.result;
+              last.truncated = ev.truncated;
+            }
+            setPending((p) =>
+              p ? { ...p, toolCalls: pendingToolCalls.slice() as ToolCallRecord[] } : p
+            );
           } else if (ev.type === 'title') {
             // Update the sidebar in-place.
             setSessions((list) =>
@@ -231,7 +258,7 @@ export function App() {
           } else if (ev.type === 'done') {
             // Refresh history from the server so the optimistic user
             // bubble is replaced with the canonical one (with the
-            // server-assigned id).
+            // server-assigned id and the persisted toolCalls column).
             setPending(null);
             if (activeId) {
               listMessages(activeId).then((msgs) => setMessages(msgs));

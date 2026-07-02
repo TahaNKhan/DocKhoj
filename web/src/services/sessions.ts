@@ -14,6 +14,11 @@ export interface Conversation {
   messageCount: number;
 }
 
+// Phase 03 / p3-T09: re-export ToolCallRecord from the shared types
+// file so consumers can import from either path without breakage.
+export type { ToolCallRecord } from '../types';
+import type { ToolCallRecord } from '../types';
+
 export interface Message {
   id: string;
   conversationId: string;
@@ -27,6 +32,7 @@ export interface Message {
     headingPath?: string[];
     score: number;
   }>;
+  toolCalls?: ToolCallRecord[];
   createdAt: string;
 }
 

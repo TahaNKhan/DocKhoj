@@ -5,6 +5,7 @@ import { SourceDrawer } from '../components/SourceDrawer';
 import type { Conversation, Message } from '../services/sessions';
 import type { ServerStatus } from '../services/status';
 import { formatContextSize } from '../services/status';
+import type { ToolCallRecord } from '../types';
 
 // Chat — presentational route. Owns no state; the parent (<App>)
 // holds sessions, messages, and the streaming turn, and passes them
@@ -16,6 +17,7 @@ export interface PendingTurn {
   aiText: string;
   aiStreaming: boolean;
   sources: Source[];
+  toolCalls?: ToolCallRecord[];
   errorMessage?: string;
 }
 
@@ -150,6 +152,7 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
                 score: s.score,
               })) ?? []
             }
+            toolCalls={m.toolCalls}
             onSourceClick={setOpenSource}
           />
         ))}
@@ -161,6 +164,7 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
             text={pending.aiText || (pending.aiStreaming ? 'Thinking' : '')}
             streaming={pending.aiStreaming}
             sources={pending.sources}
+            toolCalls={pending.toolCalls}
             timestamp="just now"
             onSourceClick={setOpenSource}
           />
