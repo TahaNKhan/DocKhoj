@@ -329,6 +329,40 @@
   box-shadow: none;
 }
 
+/* Indexing (POST in flight after upload bytes landed) — the bar
+   stays at the last transport progress (usually 100) and pulses to
+   signal the server is still chewing through embed + index. */
+.qrow.indexing .bar i {
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  animation: barPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes barPulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Failed row — accent red, pulse dot stopped. */
+.qrow.failed .bar i {
+  background: linear-gradient(90deg, #d96868, #e58a8a);
+  box-shadow: none;
+}
+
+.qrow.failed .status {
+  color: #d96868;
+}
+
+.qrow.failed .status .pulse-dot {
+  background: #d96868;
+  animation: none;
+  box-shadow: none;
+}
+
 .qrow .pct {
   font-family: var(--f-mono);
   font-size: 11px;

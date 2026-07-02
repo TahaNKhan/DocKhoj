@@ -1,46 +1,155 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Dropzone } from '../components/Dropzone';
-import { QueueRow, type QueueRowData } from '../components/QueueRow';
+import {
+  QueueRow,
+  extFromName,
+  fmtSize,
+  type QueueRowData,
+} from '../components/QueueRow';
+import { uploadFile } from '../services/upload';
+import { fetchStatus } from '../services/status';
 
-// Upload route — page head + dropzone + queue. T25 ships three static
-// rows; T36 wires to live SSE progress. The right-aligned chunk count is
-// a placeholder until T35 (/api/status) lands.
+// Upload route — page head + dropzone + queue. T36 wires Dropzone to
+// POST /api/upload via XHR so transport progress drives the queue
+// rows directly (see services/upload.ts for the design rationale).
+//
+// Concurrency: bounded ≤4 in flight at once. Each new file from the
+// dropzone joins the queue; an idle worker pool pulls up to 4 at a
+// time. Cancel: the row's "×" button aborts the XHR (closes the
+// socket, halts the bytes) and removes the row.
 
-const SEED_ROWS: QueueRowData[] = [
-  {
-    id: 'r1',
-    fileName: 'attention-is-all-you-need.pdf',
-    ext: 'PDF',
-    size: '2.1 MB',
-    chunks: 412,
-    status: 'ready',
-    progress: 100,
-  },
-  {
-    id: 'r2',
-    fileName: 'notes-on-habit-loops.md',
-    ext: 'MD',
-    size: '18 KB',
-    chunks: 46,
-    status: 'ready',
-    progress: 100,
-  },
-  {
-    id: 'r3',
-    fileName: 'garden-logbook-spring.txt',
-    ext: 'TXT',
-    size: '92 KB',
-    chunks: 88,
-    status: 'ready',
-    progress: 100,
-  },
-];
+const MAX_CONCURRENCY = 4;
+
+interface InFlightUpload {
+  id: string;
+  abort: () => void;
+}
 
 export function Upload() {
-  const [rows, setRows] = useState<QueueRowData[]>(SEED_ROWS);
+  const [rows, setRows] = useState<QueueRowData[]>([]);
+  const [chunksIndexed, setChunksIndexed] = useState<number | null>(null);
+
+  // Track in-flight uploads by id so the "×" button can abort them.
+  // ref (not state) because mutating the handle's abort fn doesn't
+  // need a re-render.
+  const inflightRef = useRef<Map<string, InFlightUpload>>(new Map());
+
+  // Read /api/status for the "N chunks indexed" badge in the header.
+  // Same 5s poll pattern App.tsx uses; Upload isn't part of the App
+  // chrome so it manages its own subscription.
+  useEffect(() => {
+    let cancelled = false;
+    let timer: number | undefined;
+    const tick = async () => {
+      try {
+        const s = await fetchStatus();
+        if (!cancelled) setChunksIndexed(s.chunks);
+      } catch {
+        /* network blip — keep last value */
+      } finally {
+        if (!cancelled) timer = window.setTimeout(tick, 5_000);
+      }
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+      // Cancel any uploads still in flight when the page unmounts.
+      for (const h of inflightRef.current.values()) h.abort();
+      inflightRef.current.clear();
+    };
+  }, []);
 
   function remove(id: string) {
+    const handle = inflightRef.current.get(id);
+    if (handle) {
+      handle.abort();
+      inflightRef.current.delete(id);
+    }
     setRows((r) => r.filter((x) => x.id !== id));
+  }
+
+  function updateRow(id: string, patch: Partial<QueueRowData>) {
+    setRows((r) => r.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+
+  function enqueue(files: File[]) {
+    // Append new rows for each file, then start uploading with bounded
+    // concurrency. New rows are immediately visible (status: uploading,
+    // progress: 0).
+    const newRows: QueueRowData[] = files.map((file) => ({
+      id: crypto.randomUUID(),
+      fileName: file.name,
+      ext: extFromName(file.name),
+      size: fmtSize(file.size),
+      chunks: 0,
+      status: 'uploading',
+      progress: 0,
+    }));
+    setRows((r) => [...newRows, ...r]);
+
+    // Worker pool: up to MAX_CONCURRENCY in flight; each worker
+    // grabs the next pending row and processes it.
+    const ac = new AbortController();
+    const queue = [...newRows];
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        const row = queue.shift();
+        if (!row) break;
+        const file = files.find((f) => f.name === row.fileName);
+        if (!file) continue;
+
+        const handle = uploadFile(
+          file,
+          (loaded, total) => {
+            const pct = Math.floor((loaded / total) * 100);
+            updateRow(row.id, { progress: pct });
+          },
+          ac.signal
+        );
+        inflightRef.current.set(row.id, handle);
+
+        try {
+          const result = await handle.promise;
+          if (result.success) {
+            updateRow(row.id, {
+              status: 'ready',
+              progress: 100,
+              chunks: result.chunksIndexed ?? 0,
+            });
+          } else {
+            updateRow(row.id, {
+              status: 'failed',
+              error: result.error ?? 'Upload failed',
+            });
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg === 'aborted') {
+            // Row was removed by the user — drop the aborted state.
+            setRows((r) => r.filter((x) => x.id !== row.id));
+          } else {
+            updateRow(row.id, {
+              status: 'failed',
+              error: msg,
+            });
+          }
+        } finally {
+          inflightRef.current.delete(row.id);
+        }
+      }
+    };
+
+    const workerCount = Math.min(MAX_CONCURRENCY, newRows.length);
+    const workers = Array.from({ length: workerCount }, () => worker());
+    void Promise.all(workers);
+
+    // The ac is intentionally unused after the queue is drained.
+    // Cancelling mid-flight happens per-row via the row's abort()
+    // handle, which calls xhr.abort() directly. This ac is here so
+    // a future "cancel all" UI hook has something to wire to.
+    void ac;
   }
 
   return (
@@ -59,20 +168,12 @@ export function Upload() {
           </p>
         </div>
         <div class="r">
-          <b>2,847</b>
+          <b>{chunksIndexed === null ? '—' : chunksIndexed.toLocaleString()}</b>
           chunks indexed
         </div>
       </div>
 
-      <Dropzone
-        onFiles={(files) => {
-          /* T36 wires to POST /api/upload + GET /api/upload/progress */
-          console.log(
-            'dropped files (stub):',
-            files.map((f) => f.name)
-          );
-        }}
-      />
+      <Dropzone onFiles={enqueue} />
 
       <div class="section">
         <h3>
@@ -82,6 +183,11 @@ export function Upload() {
           {rows.map((row) => (
             <QueueRow key={row.id} row={row} onRemove={remove} />
           ))}
+          {rows.length === 0 && (
+            <div class="queue-empty">
+              Drop a file above to start indexing.
+            </div>
+          )}
         </div>
       </div>
     </div>
