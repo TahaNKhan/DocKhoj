@@ -141,7 +141,7 @@ async function getChunkById(chunkId: string): Promise<AgentToolResult> {
     if (!points || points.length === 0) return notFound('Chunk not found');
     const collected: ToolChunk[] = [];
     for (const p of points) {
-      const payload = (p.payload ?? {}) as DocumentChunk['payload'];
+      const payload = (p.payload ?? {}) as unknown as DocumentChunk['payload'];
       collected.push({
         chunkId: String(p.id),
         fileName: payload.fileName,

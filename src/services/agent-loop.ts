@@ -143,7 +143,12 @@ const defaultDeps: AgentLoopDeps = {
   embedText,
   searchChunks,
   streamChatCompletionWithTools,
-  executeAgentTool,
+  // The AgentLoopDeps type widens executeAgentTool's name parameter
+  // to `string` for the dependency-injection surface; the underlying
+  // function narrows it back to AgentToolName via an internal
+  // isAgentToolName check. The `as typeof executeAgentTool` cast
+  // bridges the two.
+  executeAgentTool: executeAgentTool as AgentLoopDeps['executeAgentTool'],
 };
 
 function formatChunksForPrompt(chunks: DocumentChunk[]): string {

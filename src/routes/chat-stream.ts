@@ -387,7 +387,7 @@ export async function chatStreamRoutes(fastify: FastifyInstance) {
               'LLM does not support tools; falling back to expand=none'
             );
             try {
-              await activeDispatch.stream.return?.();
+              await activeDispatch.stream.return(undefined);
             } catch {
               /* ignore */
             }
