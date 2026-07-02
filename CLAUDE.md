@@ -97,8 +97,8 @@ Use `npm test -- --run` (or `npx vitest run tests/<file>.test.ts` for one file).
 This project follows the spec-workflow convention documented in §7 of the global CLAUDE.md:
 
 - Phase docs live under `docs/specs/phase-NN-name/`.
-- Phase 02 spec is the source of truth for in-flight work: `docs/specs/phase-02-frontend-streaming-and-persistence/`.
-- `TASKS.md` at the project root is the active task tracker; tasks carry sequential T-numbers per phase.
+- Phase 03 spec is the source of truth for in-flight work: `docs/specs/phase-03-document-deletion-and-agentic-rag/`.
+- `TASKS.md` at the project root is an **index** of per-phase task files; each phase owns its own `TASKS.md` inside its spec folder. T-numbers are scoped to the phase folder.
 - Before implementing a non-trivial change, update `design.md` first, then code (per §3 of the global CLAUDE.md).
 
 ## Git workflow reminder

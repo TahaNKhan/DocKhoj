@@ -58,7 +58,8 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
   //      bottom for a session we leave the user's scroll position
   //      alone. Token streaming grows `messages.length` but doesn't
   //      change the session id, so this guard naturally ignores it —
-  //      that's intentional, see T49 in TASKS.md.
+  //      that's intentional, see T49 in
+  //      docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md.
   //
   // We use `behavior: 'auto'` (instant) rather than letting the
   // container's `scroll-behavior: smooth` animate the jump; a
