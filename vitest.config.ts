@@ -1,6 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+// @preact/preset-vite lives in web/node_modules (the SPA workspace)
+// and isn't in the root devDependencies. Import via absolute path so
+// the root vitest.config.ts can find it without pulling it up a
+// level.
+import preact from './web/node_modules/@preact/preset-vite/dist/esm/index.mjs';
 
 // T43 — coverage thresholds + README + final verification.
 //
@@ -87,10 +92,11 @@ export default defineConfig({
         },
       },
       {
+        plugins: [preact()],
         test: {
           name: 'web',
           environment: 'happy-dom',
-          include: ['web/tests/**/*.test.ts'],
+          include: ['web/tests/**/*.test.{ts,tsx}'],
           globals: true,
           coverage: {
             include: ['web/src/**/*.ts'],

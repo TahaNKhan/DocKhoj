@@ -206,7 +206,12 @@ export function App() {
                       id: `${ev.sessionId}-${i}`,
                       number: i + 1,
                       fileName: s.fileName,
+                      filePath: s.filePath,
                       page: s.pageNumber ? `p.${s.pageNumber}` : undefined,
+                      pageNumber: s.pageNumber,
+                      headingPath: s.headingPath,
+                      chunk: s.chunk,
+                      score: s.score,
                     })),
                   }
                 : p

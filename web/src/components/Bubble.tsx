@@ -9,11 +9,20 @@
 
 import { renderMarkdown } from '../services/markdown';
 
+// Source — what a chat bubble's [1] / [2] chip carries. The Bubble
+// renders just enough to identify the chunk (number, fileName, page);
+// the full chunk text + heading path + score live here so the
+// SourceDrawer (T37) can show them when a chip is clicked.
 export interface Source {
   id: string;
   number: number;
   fileName: string;
-  page?: string;
+  filePath: string;
+  page?: string; // formatted: "p.3"
+  pageNumber?: number;
+  headingPath?: string[];
+  chunk: string;
+  score: number;
 }
 
 export interface Followup {

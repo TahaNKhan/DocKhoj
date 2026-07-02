@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import { Bubble, type Source } from '../components/Bubble';
 import { Composer } from '../components/Composer';
+import { SourceDrawer } from '../components/SourceDrawer';
 import type { Conversation, Message } from '../services/sessions';
 import type { ServerStatus } from '../services/status';
 import { formatContextSize } from '../services/status';
@@ -28,6 +29,14 @@ interface Props {
 }
 
 export function Chat({ activeSession, loading, messages, pending, onSubmit, status }: Props) {
+  // T37 — Source drawer state. The drawer is mounted while a source
+  // is selected; clicking a chip on any assistant bubble (committed
+  // history or live stream) sets `openSource` and the drawer slides
+  // in from the right. ESC + backdrop click + the × button all close
+  // it. Living in Chat.tsx (not App.tsx) because the drawer is a
+  // chat-column affordance — it shouldn't appear over /upload.
+  const [openSource, setOpenSource] = useState<Source | null>(null);
+
   // Model pill: show the configured chat model + its probed context
   // size (e.g. "gpt-4o · 128k ctx"). While /api/status is still being
   // polled we render an em-dash so the pill width stays stable.
@@ -132,9 +141,15 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
                 id: `${m.id}-${i}`,
                 number: i + 1,
                 fileName: s.fileName,
+                filePath: s.filePath,
                 page: s.pageNumber ? `p.${s.pageNumber}` : undefined,
+                pageNumber: s.pageNumber,
+                headingPath: s.headingPath,
+                chunk: s.chunk,
+                score: s.score,
               })) ?? []
             }
+            onSourceClick={setOpenSource}
           />
         ))}
 
@@ -146,11 +161,13 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
             streaming={pending.aiStreaming}
             sources={pending.sources}
             timestamp="just now"
+            onSourceClick={setOpenSource}
           />
         )}
       </div>
 
       <Composer disabled={pending?.aiStreaming} onSubmit={onSubmit} />
+      <SourceDrawer source={openSource} onClose={() => setOpenSource(null)} />
     </section>
   );
 }

@@ -177,3 +177,219 @@
   font-family: var(--f-mono);
   font-size: 11px;
 }
+
+/* Source drawer (T37) — inline panel that opens on a chip click.
+ * Slides in from the right; backdrop dims the rest of the page.
+ * On narrow viewports (<720 px) the drawer goes full-width. */
+
+.drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 6, 4, 0.55);
+  backdrop-filter: blur(2px);
+  z-index: 90;
+  animation: fade-in 0.18s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.source-drawer {
+  position: fixed;
+  top: 65px; /* below the TopBar */
+  right: 0;
+  bottom: 0;
+  width: min(480px, 90vw);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border-left: 1px solid var(--border);
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  animation: drawer-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+  box-shadow: -24px 0 48px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.source-drawer .drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.source-drawer .meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.source-drawer .title {
+  font-family: var(--f-display);
+  font-size: 18px;
+  font-weight: 500;
+  color: var(--cream);
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+.source-drawer .title .src-tag {
+  font-family: var(--f-mono);
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.04em;
+  margin-right: 4px;
+}
+
+.source-drawer .title .page {
+  color: var(--muted);
+  font-family: var(--f-mono);
+  font-size: 12px;
+  margin-left: 6px;
+}
+
+.source-drawer .crumbs {
+  margin-top: 8px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.source-drawer .crumbs .sep {
+  color: var(--accent);
+}
+
+.source-drawer .close-x {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font-size: 22px;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  transition: 0.2s;
+  flex-shrink: 0;
+}
+
+.source-drawer .close-x:hover {
+  color: var(--accent);
+  background: rgba(226, 85, 64, 0.1);
+}
+
+.source-drawer .drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  min-height: 0;
+}
+
+.source-drawer .chunk {
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--fg-soft);
+}
+
+.source-drawer .chunk p {
+  margin-bottom: 12px;
+}
+
+.source-drawer .chunk p:last-child {
+  margin-bottom: 0;
+}
+
+.source-drawer .chunk code {
+  font-family: var(--f-mono);
+  font-size: 12.5px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(244, 236, 225, 0.06);
+  color: var(--accent-2);
+}
+
+.source-drawer .chunk pre {
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: #14100d;
+  border: 1px solid var(--border);
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.source-drawer .chunk pre code {
+  background: none;
+  padding: 0;
+  color: var(--cream);
+}
+
+.source-drawer .chunk b,
+.source-drawer .chunk strong {
+  color: var(--cream);
+  font-weight: 600;
+}
+
+.source-drawer .chunk em,
+.source-drawer .chunk i {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.source-drawer .drawer-foot {
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.source-drawer .open-file {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  text-decoration: none;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  transition: 0.2s;
+  text-transform: uppercase;
+}
+
+.source-drawer .open-file:hover {
+  background: rgba(226, 85, 64, 0.12);
+  color: var(--cream);
+}
+
+.source-drawer .score {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 720px) {
+  .source-drawer {
+    width: 100vw;
+  }
+}
