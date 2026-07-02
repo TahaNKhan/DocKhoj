@@ -6,7 +6,7 @@ import { ConversationStore } from '../services/conversations.js';
 // project-wide regex and rejects with 400 otherwise.
 //
 // FR-8..FR-13: session CRUD + message listing. Path migration cut lands
-// in T29; this file already uses the /api/* prefix.
+// in p2-T08; this file already uses the /api/* prefix.
 
 const SESSION_ID_REGEX = /^[A-Za-z0-9_-]{1,64}$/;
 

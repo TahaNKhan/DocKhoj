@@ -2,7 +2,7 @@
  *
  * Source: mockups/dockhoj-chat-v2.html (root body styles). Keep this
  * conservative — selectors here target the whole tree, not components.
- * Component-specific styles live alongside their component (T25+).
+ * Component-specific styles live alongside their component (p2-T04+).
  */
 
 * {
@@ -20,7 +20,7 @@ body {
 }
 
 body {
-  /* T45: pin the body to the viewport (use dvh for mobile chrome).
+  /* p2-T22: pin the body to the viewport (use dvh for mobile chrome).
      The page itself never scrolls — chat's `.stream` and upload's
      `.upload-shell` each own their own scrolling inside <main>. */
   height: 100vh;

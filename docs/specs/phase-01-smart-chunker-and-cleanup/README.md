@@ -9,7 +9,7 @@
 - **Worktree:** n/a
 
 ## Pointers
-- **Tasks:** T1 … T21 in [`TASKS.md`](./TASKS.md)
+- **Tasks:** p1-T01 … p1-T21 in [`TASKS.md`](./TASKS.md)
 - **PR / merge commit:** _pending_
 - **Related specs:** none (first phase)
 

@@ -9,7 +9,7 @@ import {
   getDbPath,
 } from '../../src/db/index.js';
 
-// T43 — coverage for the db singleton. The integration loop boots the
+// p2-p1-T20 — coverage for the db singleton. The integration loop boots the
 // app which exercises openDb end-to-end, but vitest can't hit the
 // singleton without going through the actual server. So we cover the
 // singleton's lazy-create, caching, env-var, and reset paths here.

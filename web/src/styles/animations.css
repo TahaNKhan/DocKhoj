@@ -3,7 +3,7 @@
  * Keyframes and the .aurora / .grain / .grid-overlay layers are
  * visually identical to mockups/dockhoj-chat-v2.html. They live
  * here (not in tokens.css) because they're concrete shapes — not
- * tokens — and are referenced by the top-level chat shell (T25).
+ * tokens — and are referenced by the top-level chat shell (p2-T04).
  */
 
 @keyframes aurora {
@@ -89,7 +89,7 @@
   -webkit-mask-image: radial-gradient(circle at 50% 30%, #000 30%, transparent 80%);
 }
 
-/* Caret — used by streaming assistant bubbles (T25). */
+/* Caret — used by streaming assistant bubbles (p2-T04). */
 .caret {
   display: inline-block;
   width: 7px;

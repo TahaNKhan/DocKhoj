@@ -810,28 +810,28 @@ If a true single-binary executable becomes a hard requirement later (e.g. for di
 
 Roughly one task per logical commit. Each task sized to be reviewable, runs the test suite green, and ends in a committable state.
 
-1. **T22** — Add deps: `better-sqlite3`, `wouter-preact`, `@preact/preset-vite`, `vite`, `vite-plugin-singlefile`, `@testing-library/preact`, `happy-dom`, `marked`, `dompurify` (moved from CDN to npm). Verify lockfile.
-2. **T23** — Create `web/` scaffold: `web/index.html`, `web/src/main.tsx`, `web/src/App.tsx`, `web/vite.config.ts`, `web/tsconfig.json`, `web/package.json`. Vite dev server runs on `npm --prefix web run dev` (port 5173). Build outputs to `web/dist/`.
-3. **T24** — Extract design tokens: copy `:root` from `mockups/dockhoj-chat-v2.html` into `web/src/styles/tokens.css`. Add `base.css` (reset, body, selection). Add `animations.css` (aurora, grain, grid, pulse, rise, caret, blink).
-4. **T25** — Build static UI scaffold (no API yet): `TopBar`, `Sidebar` (with seed sessions), `Bubble`, `Composer` (no-op), `Dropzone`, `QueueRow` (static). Render both routes with sample data; verify visual contract at all design-spec viewports. Add responsive styles.
-5. **T26** — Add `src/db/`, `001_init.sql`, `migrate.ts`. Wire `migrate()` into `index.ts` startup before `initCollection()`.
-6. **T27** — Implement `services/conversations.ts` (CRUD + message append + `setGeneratedTitle` respecting FR-15b + listMessages). Unit tests against `:memory:` DB.
-7. **T28** — Add `routes/api-sessions.ts` (POST/GET/PATCH/DELETE + `:id/messages`). Route tests via `fastify.inject`.
-8. **T29** — **Path migration cut:** move every existing API endpoint from its old path to `/api/*`. Update `routes/chat.ts`, `routes/search.ts`, `routes/upload.ts`, `routes/download.ts`, add `routes/api-health.ts` for `/api/health`. Update all callers (existing tests, README) to use the new paths.
-9. **T30** — Wire SPA to `/api/sessions`: `web/src/services/sessions.ts` (typed fetch), `Sidebar.tsx` (real list), click-to-switch.
-10. **T31** — Add `streamChatCompletionRaw` to `services/openai-api-wrapper.ts` (additive). Create `services/title-generator.ts` (`generateConversationTitle` + `fallbackTitle`).
-11. **T32** — Add `services/stream-chat.ts` orchestrating: embed → search → prompt → stream → emit SSE. Stub-friendly.
-12. **T33** — Add `routes/chat.ts` `POST /api/chat/stream` SSE handler with post-`done` `event: title` emission. Update `POST /api/chat` (non-stream) to include a `title` field via concurrent LLM call. Client SSE parser handles the new `title` event. Route tests assert event sequence including the title event.
-13. **T34** — Client SSE: `web/src/services/stream.ts`. `Bubble.tsx` renders streamed tokens live. `Composer.tsx` sends via `openChatStream`. Test SSE parser.
-14. **T35** — Add `routes/api-status.ts` (`GET /api/status` → `{chunks, ollamaAvailable}`). `TopBar.tsx` reads it on mount.
-15. **T36** — Wire `web/src/services/upload.ts` using XHR `upload.onprogress` for transport progress + the POST response for final status (no SSE).
-16. **T37** — Wire `QueueRow.tsx` to live `/api/upload/progress` updates. `Dropzone.tsx` calls `POST /api/upload` and the row's progress/state updates from the SSE stream.
-17. **T38** — Add `SourceDrawer.tsx` (inline drawer) and `Bubble.tsx` source-chip click handler.
-18. **T39** — Add `server/spa.ts` (mount `web/dist/` + SPA fallback). Update `Dockerfile` to run `npm run build:web` and update `HEALTHCHECK` to `/api/health`. Update `docker-compose.yml` with `conversations_data` volume.
+1. **p2-T01** — Add deps: `better-sqlite3`, `wouter-preact`, `@preact/preset-vite`, `vite`, `vite-plugin-singlefile`, `@testing-library/preact`, `happy-dom`, `marked`, `dompurify` (moved from CDN to npm). Verify lockfile.
+2. **p2-T02** — Create `web/` scaffold: `web/index.html`, `web/src/main.tsx`, `web/src/App.tsx`, `web/vite.config.ts`, `web/tsconfig.json`, `web/package.json`. Vite dev server runs on `npm --prefix web run dev` (port 5173). Build outputs to `web/dist/`.
+3. **p2-T03** — Extract design tokens: copy `:root` from `mockups/dockhoj-chat-v2.html` into `web/src/styles/tokens.css`. Add `base.css` (reset, body, selection). Add `animations.css` (aurora, grain, grid, pulse, rise, caret, blink).
+4. **p2-T04** — Build static UI scaffold (no API yet): `TopBar`, `Sidebar` (with seed sessions), `Bubble`, `Composer` (no-op), `Dropzone`, `QueueRow` (static). Render both routes with sample data; verify visual contract at all design-spec viewports. Add responsive styles.
+5. **p2-T05** — Add `src/db/`, `001_init.sql`, `migrate.ts`. Wire `migrate()` into `index.ts` startup before `initCollection()`.
+6. **p2-T06** — Implement `services/conversations.ts` (CRUD + message append + `setGeneratedTitle` respecting FR-15b + listMessages). Unit tests against `:memory:` DB.
+7. **p2-T07** — Add `routes/api-sessions.ts` (POST/GET/PATCH/DELETE + `:id/messages`). Route tests via `fastify.inject`.
+8. **p2-T08** — **Path migration cut:** move every existing API endpoint from its old path to `/api/*`. Update `routes/chat.ts`, `routes/search.ts`, `routes/upload.ts`, `routes/download.ts`, add `routes/api-health.ts` for `/api/health`. Update all callers (existing tests, README) to use the new paths.
+9. **p2-T09** — Wire SPA to `/api/sessions`: `web/src/services/sessions.ts` (typed fetch), `Sidebar.tsx` (real list), click-to-switch.
+10. **p2-T10** — Add `streamChatCompletionRaw` to `services/openai-api-wrapper.ts` (additive). Create `services/title-generator.ts` (`generateConversationTitle` + `fallbackTitle`).
+11. **p2-T11** — Add `services/stream-chat.ts` orchestrating: embed → search → prompt → stream → emit SSE. Stub-friendly.
+12. **p2-T12** — Add `routes/chat.ts` `POST /api/chat/stream` SSE handler with post-`done` `event: title` emission. Update `POST /api/chat` (non-stream) to include a `title` field via concurrent LLM call. Client SSE parser handles the new `title` event. Route tests assert event sequence including the title event.
+13. **p2-T13** — Client SSE: `web/src/services/stream.ts`. `Bubble.tsx` renders streamed tokens live. `Composer.tsx` sends via `openChatStream`. Test SSE parser.
+14. **p2-T14** — Add `routes/api-status.ts` (`GET /api/status` → `{chunks, ollamaAvailable}`). `TopBar.tsx` reads it on mount.
+15. **p2-T15** — Wire `web/src/services/upload.ts` using XHR `upload.onprogress` for transport progress + the POST response for final status (no SSE).
+16. **p2-T16** — Wire `QueueRow.tsx` to live `/api/upload/progress` updates. `Dropzone.tsx` calls `POST /api/upload` and the row's progress/state updates from the SSE stream.
+17. **p2-T17** — Add `SourceDrawer.tsx` (inline drawer) and `Bubble.tsx` source-chip click handler.
+18. **p2-T18** — Add `server/spa.ts` (mount `web/dist/` + SPA fallback). Update `Dockerfile` to run `npm run build:web` and update `HEALTHCHECK` to `/api/health`. Update `docker-compose.yml` with `conversations_data` volume.
 19. **T40** — Update root `package.json` scripts: `build:web`, `dev` (orchestrate server + Vite via `concurrently`), `start`, `test` (vitest workspaces for `web/`).
 20. **T41** — Component tests (`@testing-library/preact`): `Composer`, `Sidebar`, `Bubble`, `QueueRow`, `SourceDrawer`.
-21. **T42** — E2E test extension: real Docker stack, upload sample, send chat, assert streamed tokens arrive. Use new `/api/*` paths.
-22. **T43** — Coverage thresholds in `vitest.config.ts` updated to include the new code paths at ≥ 80% lines. README update: new env vars, new `/api/*` paths, Docker compose volume, `build:web` script.
+21. **p2-T19** — E2E test extension: real Docker stack, upload sample, send chat, assert streamed tokens arrive. Use new `/api/*` paths.
+22. **p2-T20** — Coverage thresholds in `vitest.config.ts` updated to include the new code paths at ≥ 80% lines. README update: new env vars, new `/api/*` paths, Docker compose volume, `build:web` script.
 
 ## Open decisions
 

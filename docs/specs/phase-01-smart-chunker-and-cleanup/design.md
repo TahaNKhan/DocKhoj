@@ -529,27 +529,27 @@ and changes the app's `depends_on` to `service_healthy`.
 
 Roughly one task per logical commit. Each task is sized to be reviewable and runs the test suite green before the next starts.
 
-1. **T1** — Add deps (`gpt-tokenizer`, `unified`, `remark-parse`, `mdast-util-to-string`, `p-limit`); `npm install`.
-2. **T2** — New parser types + `parser-text.ts` + `parser-markdown.ts` + `parser-docx.ts` + `parser-pdf.ts` + dispatcher rewrite in `services/parser.ts`. Keep `text` field populated for back-compat. Tests for each parser.
-3. **T3** — New chunk types + `chunk-tokenizer.ts`. Tests for tokenizer (Unicode, abbreviations, decimals, full-width punctuation).
-4. **T4** — New `chunk-structural.ts`. Tests for: code-block preservation, list integrity, sentence-aligned overlap, min-token merge, max-token enforcement.
-5. **T5** — New `chunk-semantic.ts`. Test with a topic-shift fixture.
-6. **T6** — Rewrite `utils/chunk.ts` as the public API: `chunkBlocks` + legacy `chunkText` shim. Update existing `tests/utils/chunk.test.ts`.
-7. **T7** — `services/embed.ts`: parallel embed (`p-limit`), retry with backoff, real `isOllamaAvailable`. Update `tests/services/embed.test.ts`.
-8. **T8** — `services/qdrant.ts`: payload indexes in `initCollection`; `searchChunks` filter support; migrate to `client.query`. New `tests/services/qdrant.test.ts`.
-9. **T9** — `routes/upload.ts`: extract shared pipeline; per-file batch status; bounded parallel embed; truncated chunk logging.
-10. **T10** — `routes/download.ts`: path-traversal guard + MIME map.
-11. **T11** — `routes/chat.ts`: sessionId validation; history cap.
-12. **T12** — `routes/search.ts`: filter query params; pass to `searchChunks`.
-13. **T13** — `index.ts`: SIGTERM/SIGINT graceful shutdown.
-14. **T14** — `public/index.html`: DOMPurify CDN; parallel uploads.
-15. **T15** — `utils/logger.ts`: rename `donwloadLog` → `downloadLog`; truncate logged chunk text; remove unused `path` import.
-16. **T16** — `tsconfig.json`: `noImplicitAny: true`, `noUncheckedIndexedAccess: true`. Fix resulting errors. Remove dead code (`combineChunks`, unused `uuid` import in qdrant).
-17. **T17** — Route tests (`tests/routes/*.test.ts`) via `fastify.inject`.
-18. **T18** — E2E test (`tests/e2e/upload-and-query.test.ts`).
-19. **T19** — `Dockerfile` + `docker-compose.yml`: HEALTHCHECK, Ollama healthcheck, EXPOSE port, env defaults.
-20. **T20** — Coverage thresholds in `vitest.config.ts`. Bring up coverage to meet thresholds.
-21. **T21** — Final pass: `npm run build`, `npm test`, Docker build verify, README update for new env vars.
+1. **p1-T01** — Add deps (`gpt-tokenizer`, `unified`, `remark-parse`, `mdast-util-to-string`, `p-limit`); `npm install`.
+2. **p1-T02** — New parser types + `parser-text.ts` + `parser-markdown.ts` + `parser-docx.ts` + `parser-pdf.ts` + dispatcher rewrite in `services/parser.ts`. Keep `text` field populated for back-compat. Tests for each parser.
+3. **p1-T03** — New chunk types + `chunk-tokenizer.ts`. Tests for tokenizer (Unicode, abbreviations, decimals, full-width punctuation).
+4. **p1-T04** — New `chunk-structural.ts`. Tests for: code-block preservation, list integrity, sentence-aligned overlap, min-token merge, max-token enforcement.
+5. **p1-T05** — New `chunk-semantic.ts`. Test with a topic-shift fixture.
+6. **p1-T06** — Rewrite `utils/chunk.ts` as the public API: `chunkBlocks` + legacy `chunkText` shim. Update existing `tests/utils/chunk.test.ts`.
+7. **p1-T07** — `services/embed.ts`: parallel embed (`p-limit`), retry with backoff, real `isOllamaAvailable`. Update `tests/services/embed.test.ts`.
+8. **p1-T08** — `services/qdrant.ts`: payload indexes in `initCollection`; `searchChunks` filter support; migrate to `client.query`. New `tests/services/qdrant.test.ts`.
+9. **p1-T09** — `routes/upload.ts`: extract shared pipeline; per-file batch status; bounded parallel embed; truncated chunk logging.
+10. **p1-T10** — `routes/download.ts`: path-traversal guard + MIME map.
+11. **p1-T11** — `routes/chat.ts`: sessionId validation; history cap.
+12. **p1-T12** — `routes/search.ts`: filter query params; pass to `searchChunks`.
+13. **p1-T13** — `index.ts`: SIGTERM/SIGINT graceful shutdown.
+14. **p1-T14** — `public/index.html`: DOMPurify CDN; parallel uploads.
+15. **p1-T15** — `utils/logger.ts`: rename `donwloadLog` → `downloadLog`; truncate logged chunk text; remove unused `path` import.
+16. **p1-T16** — `tsconfig.json`: `noImplicitAny: true`, `noUncheckedIndexedAccess: true`. Fix resulting errors. Remove dead code (`combineChunks`, unused `uuid` import in qdrant).
+17. **p1-T17** — Route tests (`tests/routes/*.test.ts`) via `fastify.inject`.
+18. **p1-T18** — E2E test (`tests/e2e/upload-and-query.test.ts`).
+19. **p1-T19** — `Dockerfile` + `docker-compose.yml`: HEALTHCHECK, Ollama healthcheck, EXPOSE port, env defaults.
+20. **p1-T20** — Coverage thresholds in `vitest.config.ts`. Bring up coverage to meet thresholds.
+21. **p1-T21** — Final pass: `npm run build`, `npm test`, Docker build verify, README update for new env vars.
 
 ## Open decisions
 
@@ -571,4 +571,4 @@ Concretely (for the Phase 02 spec, not this one):
 - Return `toolCalls` in the response for human-transparency in the UI.
 - No streaming in Phase 02 (tools + streaming is a separate complexity layer).
 
-Phase 01's `expandHits` helper and the Qdrant filter queries built in T12 are designed to be the implementation primitives the agent loop will call — no rework needed in Phase 02.
+Phase 01's `expandHits` helper and the Qdrant filter queries built in p1-T12 are designed to be the implementation primitives the agent loop will call — no rework needed in Phase 02.

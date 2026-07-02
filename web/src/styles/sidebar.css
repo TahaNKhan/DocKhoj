@@ -1,7 +1,7 @@
-/* Sidebar — sessions list (with seed data in T25) and pinned section. */
+/* Sidebar — sessions list (with seed data in p2-T04) and pinned section. */
 
 .side {
-  /* T46: pinned to the left of .layout at a fixed 300 px. flex-shrink: 0
+  /* p2-T23: pinned to the left of .layout at a fixed 300 px. flex-shrink: 0
      stops the chat column from squeezing the sidebar when the viewport
      gets tight. The mobile breakpoint below hides it entirely. */
   width: 300px;

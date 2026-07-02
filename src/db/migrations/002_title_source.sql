@@ -1,4 +1,4 @@
--- Phase 02 / T27: Track how a session's title was set.
+-- Phase 02 / p2-T06: Track how a session's title was set.
 --
 -- title_source values:
 --   'default'   — initial 'New chat'

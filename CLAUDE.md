@@ -72,10 +72,10 @@ DocKhoj is a Docker Compose stack (Ollama + Qdrant + the Fastify app). The faste
 **What this protocol catches that unit tests miss:**
 
 - Server-side build / TS errors that only surface under `tsc` (the container rebuilds on every `./restart.sh`).
-- `module.exports` vs `import.meta.url` path-resolution bugs (the global CLAUDE.md caught one in T38 — `./app/dist/..` paths don't work the way you'd expect in a Docker build context).
-- Real OpenAI / Ollama / Qdrant behavior, including the `<think>` chain-of-thought the streaming model emits by default (T33 added a stateful filter to suppress it).
-- DB schema migrations actually applying cleanly on a fresh volume (T26).
-- The Dockerfile `HEALTHCHECK` path matching the actual `/api/health` route (T19/T52).
+- `module.exports` vs `import.meta.url` path-resolution bugs (the global CLAUDE.md caught one in p2-T17 — `./app/dist/..` paths don't work the way you'd expect in a Docker build context).
+- Real OpenAI / Ollama / Qdrant behavior, including the `<think>` chain-of-thought the streaming model emits by default (p2-T12 added a stateful filter to suppress it).
+- DB schema migrations actually applying cleanly on a fresh volume (p1-T05).
+- The Dockerfile `HEALTHCHECK` path matching the actual `/api/health` route (p1-T08 / p3-T09).
 
 **What we deliberately do NOT do here:**
 
@@ -98,7 +98,7 @@ This project follows the spec-workflow convention documented in §7 of the globa
 
 - Phase docs live under `docs/specs/phase-NN-name/`.
 - Phase 03 spec is the source of truth for in-flight work: `docs/specs/phase-03-document-deletion-and-agentic-rag/`.
-- `TASKS.md` at the project root is an **index** of per-phase task files; each phase owns its own `TASKS.md` inside its spec folder. T-numbers are scoped to the phase folder.
+- `TASKS.md` at the project root is an **index** of per-phase task files; each phase owns its own `TASKS.md` inside its spec folder. Task IDs use the `pX-TYY` form (e.g. `p1-T07`, `p2-T18`, `p3-T11`); the prefix disambiguates phases.
 - Before implementing a non-trivial change, update `design.md` first, then code (per §3 of the global CLAUDE.md).
 
 ## Git workflow reminder

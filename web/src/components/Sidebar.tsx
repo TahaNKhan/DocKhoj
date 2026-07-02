@@ -1,9 +1,9 @@
 import type { Conversation } from '../services/sessions';
 
 // Sidebar — Sessions (with active state) + Pinned section + footer
-// indicator. T30 replaces the seed list with a real `sessions` prop
+// indicator. p2-T09 replaces the seed list with a real `sessions` prop
 // fed from /api/sessions. The "Pinned" section is decorative for now
-// (T30+ keeps it on the design canvas but doesn't wire it to the
+// (p2-T09+ keeps it on the design canvas but doesn't wire it to the
 // backend).
 
 interface Props {

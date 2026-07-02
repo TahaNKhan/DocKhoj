@@ -29,7 +29,7 @@ interface Props {
 }
 
 export function Chat({ activeSession, loading, messages, pending, onSubmit, status }: Props) {
-  // T37 — Source drawer state. The drawer is mounted while a source
+  // p2-T16 — Source drawer state. The drawer is mounted while a source
   // is selected; clicking a chip on any assistant bubble (committed
   // history or live stream) sets `openSource` and the drawer slides
   // in from the right. ESC + backdrop click + the × button all close
@@ -45,7 +45,7 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
     ? `${formatContextSize(status.llmContextSize)} ctx`
     : null;
 
-  // T49 — scroll the stream to the bottom on session load (initial
+  // p2-T26 — scroll the stream to the bottom on session load (initial
   // mount + session switch). Two guards:
   //
   //   1. `messages.length === 0` — the active session may have just
@@ -58,7 +58,7 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
   //      bottom for a session we leave the user's scroll position
   //      alone. Token streaming grows `messages.length` but doesn't
   //      change the session id, so this guard naturally ignores it —
-  //      that's intentional, see T49 in
+  //      that's intentional, see p2-T26 in
   //      docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md.
   //
   // We use `behavior: 'auto'` (instant) rather than letting the

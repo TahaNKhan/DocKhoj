@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { uploadFile } from '../../src/services/upload';
 
-// T36 — upload service tests. We stub XMLHttpRequest so we can
+// p2-T15 — upload service tests. We stub XMLHttpRequest so we can
 // drive transport-progress events, the load event, and aborts
 // deterministically without hitting the network.
 //

@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 // level.
 import preact from './web/node_modules/@preact/preset-vite/dist/esm/index.mjs';
 
-// T43 — coverage thresholds + README + final verification.
+// p2-T20 — coverage thresholds + README + final verification.
 //
 // Coverage targets (lines):
 //   - Project overall:              ≥ 80%
@@ -60,7 +60,7 @@ export default defineConfig({
       exclude: ['src/**/*.d.ts', 'src/index.ts', 'src/types.d.ts'],
       thresholds: {
         ...PER_MODULE_THRESHOLDS,
-        // T43 acceptance: project overall ≥ 80% lines. Other
+        // p2-T20 acceptance: project overall ≥ 80% lines. Other
         // metrics are calibrated to the current coverage of the
         // modules we test in-process; web-only behaviour is
         // validated end-to-end via ./restart.sh + curl, not here.

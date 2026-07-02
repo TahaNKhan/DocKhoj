@@ -25,7 +25,7 @@ vi.mock('../../src/services/openai-api-wrapper.js', () => ({
 
 import { streamChatCompletion } from '../../src/services/stream-chat.js';
 
-// T43 — coverage for the stream orchestrator. We mock the three
+// p2-p1-T20 — coverage for the stream orchestrator. We mock the three
 // upstream calls (embed, search, openai stream) so the test stays
 // fast and deterministic; the real OpenAI/Qdrant behavior is
 // validated by the integration loop (`./restart.sh` + curl).

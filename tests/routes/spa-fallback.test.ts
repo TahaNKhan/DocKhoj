@@ -5,7 +5,7 @@ import path from 'node:path';
 import Fastify from 'fastify';
 import { mountSpa } from '../../src/server/spa.js';
 
-// T42 — SPA fallback tests. We point mountSpa at a temp dir with a
+// p2-p1-T19 — SPA fallback tests. We point mountSpa at a temp dir with a
 // stubbed web/dist/index.html and assert the routing rules:
 // - Page routes get 200 + text/html (the index.html fallback).
 // - /api/* 404s return JSON, never HTML.

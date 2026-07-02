@@ -2,7 +2,7 @@
 // network directly anywhere else — these are the only HTTP callers.
 
 // Mirror the server's TypeScript types so the SPA and the server
-// agree on shape. If these drift, the integration tests in T41 will
+// agree on shape. If these drift, the integration tests in p2-T20 will
 // catch it.
 
 export interface Conversation {

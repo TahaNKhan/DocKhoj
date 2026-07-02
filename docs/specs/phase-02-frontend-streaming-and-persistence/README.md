@@ -9,7 +9,7 @@
 - **Worktree:** n/a
 
 ## Pointers
-- **Tasks:** T22 … T49 (T44-T49 are post-spec priority follow-ups) in [`TASKS.md`](./TASKS.md)
+- **Tasks:** p2-T01 … p2-T26 (p2-T21-p2-T26 are post-spec priority follow-ups) in [`TASKS.md`](./TASKS.md)
 - **Spec:** [`requirements.md`](./requirements.md), [`design.md`](./design.md)
 - **Design source:** [`mockups/dockhoj-chat-v2.html`](./mockups/dockhoj-chat-v2.html), [`mockups/dockhoj-upload-v2.html`](./mockups/dockhoj-upload-v2.html) (canonical visual contract)
 - **Related specs:** Phase 01 (`../phase-01-smart-chunker-and-cleanup/`)

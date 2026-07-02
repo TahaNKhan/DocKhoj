@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { renderMarkdown } from '../../src/services/markdown';
 
-// T43 — coverage for the markdown service. T44 added this module;
+// p2-T20 — coverage for the markdown service. p2-T21 added this module;
 // these tests pin the XSS-sanitization behavior (FR-33) and verify
 // streaming re-renders handle partial chunks.
 

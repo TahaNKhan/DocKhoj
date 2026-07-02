@@ -4,7 +4,7 @@ import { Chat } from '../../src/routes/Chat';
 import type { Conversation, Message } from '../../src/services/sessions';
 import type { ServerStatus } from '../../src/services/status';
 
-// T49 — auto-scroll the chat stream to the bottom when a session
+// p2-T26 — auto-scroll the chat stream to the bottom when a session
 // loads. We don't test this via curl because scroll position is a
 // DOM state, not an API observable. Happy-dom gives us a real DOM,
 // scrollHeight/clientHeight/s scrollTo are all functional, and the
@@ -70,7 +70,7 @@ function renderChat(
   return { ...result, stream };
 }
 
-describe('Chat scroll-to-bottom (T49)', () => {
+describe('Chat scroll-to-bottom (p2-T26)', () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();

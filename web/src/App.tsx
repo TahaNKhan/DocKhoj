@@ -40,7 +40,7 @@ export function App() {
   const [status, setStatus] = useState<ServerStatus | null>(null);
   const streamRef = useRef<{ close: () => void } | null>(null);
 
-  // T46 follow-up: mobile sidebar (burger menu). The sidebar slides in
+  // p2-T23 follow-up: mobile sidebar (burger menu). The sidebar slides in
   // as a fixed overlay below 960 px (see sidebar.css). On desktop the
   // state is irrelevant — the sidebar is always visible — but we still
   // keep it in state so the same component instance works on both.

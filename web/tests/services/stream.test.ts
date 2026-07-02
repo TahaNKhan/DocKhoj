@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { openChatStream, type StreamEvent } from '../../src/services/stream';
 
-// T43 — coverage for the client-side SSE parser used by /api/chat/stream.
+// p2-T20 — coverage for the client-side SSE parser used by /api/chat/stream.
 // We hand-craft a ReadableStream that emits the wire-format the server
 // would produce (one frame per event), then assert the events arrive in
 // order, malformed frames are skipped, and abort works.

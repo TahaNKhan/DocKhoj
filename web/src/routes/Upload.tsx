@@ -9,7 +9,7 @@ import {
 import { uploadFile } from '../services/upload';
 import { fetchStatus } from '../services/status';
 
-// Upload route — page head + dropzone + queue. T36 wires Dropzone to
+// Upload route — page head + dropzone + queue. p2-T15 wires Dropzone to
 // POST /api/upload via XHR so transport progress drives the queue
 // rows directly (see services/upload.ts for the design rationale).
 //

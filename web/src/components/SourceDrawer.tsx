@@ -1,5 +1,5 @@
 // SourceDrawer — inline panel that opens when the user clicks a
-// source chip on an assistant bubble (T37). Slides in from the
+// source chip on an assistant bubble (p2-T16). Slides in from the
 // right, shows the full chunk text rendered as markdown, plus the
 // fileName + page/heading metadata and an "Open file" link to the
 // server's `/api/download/:filename` route.

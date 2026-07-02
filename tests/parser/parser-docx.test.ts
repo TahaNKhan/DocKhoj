@@ -12,9 +12,9 @@ vi.mock('mammoth', () => ({
 
 import { parseDocx } from '../../src/parser/parser-docx.js';
 
-// T43 — coverage for the docx parser. We mock mammoth.extractRawText
+// p2-p1-T20 — coverage for the docx parser. We mock mammoth.extractRawText
 // so the test doesn't need a real .docx file. Real .docx behavior is
-// validated by the e2e tests in T18.
+// validated by the e2e tests in p1-T18.
 
 describe('parseDocx', () => {
   it('returns an empty block list for empty input', async () => {

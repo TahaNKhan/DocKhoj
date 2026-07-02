@@ -7,7 +7,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
 
 ---
 
-## T44 — `documents` table + `DocumentStore` + upload wiring + status count
+## p3-T01 — `documents` table + `DocumentStore` + upload wiring + status count
 
 - **Description:** Add migration `src/db/migrations/003_documents.sql` (the `documents` table + `idx_documents_uploaded_at`). Create `src/services/document-store.ts` with the `DocumentStore` class (`insert`, `list`, `get`, `delete`). Wire it into `processUpload` in `src/routes/upload.ts` so a `documents` row is inserted AFTER successful Qdrant upsert (uses the same `db` singleton the routes already have). Extend `src/routes/api-status.ts` to add a `documents: number` field (count of rows in the table).
 - **Maps to FR:** FR-1, FR-2, FR-7
@@ -23,7 +23,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
 
 ---
 
-## T45 — Qdrant `deleteByFilePath` + `/api/documents` routes
+## p3-T02 — Qdrant `deleteByFilePath` + `/api/documents` routes
 
 - **Description:** Add `deleteByFilePath(filePath)` to `src/services/qdrant.ts` (filter-based bulk delete, returns the deleted count). Promote `fetchByFilePathAndIndex` and `fetchByFilePathAndHeadingPath` from private to public. Create `src/routes/api-documents.ts` with `GET /api/documents` (list) and `DELETE /api/documents/:fileId` (delete: Qdrant → file unlink → SQLite). Register the route in `src/index.ts`.
 - **Maps to FR:** FR-3, FR-4, FR-5, FR-6, FR-29
@@ -36,13 +36,13 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Route test: `DELETE /api/documents/:fileId` with invalid fileId (regex fail) → 400.
   - Route test: `DELETE /api/documents/:fileId` with mocked Qdrant failure → 500 + disk + SQLite untouched.
   - Route test: re-DELETE after successful DELETE → 404 (idempotent from SPA perspective).
-- **Depends on:** T44
+- **Depends on:** p3-T01
 - **Estimate:** M
 - **Status:** todo
 
 ---
 
-## T46 — SPA: document service + `DocumentsList` + integrate into `/upload`
+## p3-T03 — SPA: document service + `DocumentsList` + integrate into `/upload`
 
 - **Description:** Add `web/src/services/documents.ts` (`listDocuments`, `deleteDocument`). Add `web/src/types.d.ts` `Document` type. Create `web/src/components/DocumentsList.tsx` with inline-confirm delete UX (second click within 5s; 500 → row reappears with inline error). Extend `web/src/routes/Upload.tsx` to render the DocumentsList below the queue; reload after a successful upload completes; reload after a successful delete completes.
 - **Maps to FR:** FR-8, FR-9, FR-10, FR-11, FR-12
@@ -51,13 +51,13 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Component test (`@testing-library/preact`): render with seed documents → rows visible; click delete → confirm state; click again within 5s → `onDelete` fires; wait 6s → confirm state expires.
   - Component test: `onDelete` rejects → error state renders; click dismiss → error clears.
   - E2E (Docker): upload 2 docs → both appear in list; delete one → list updates + `/api/documents` reflects + `/api/status.documents` updates.
-- **Depends on:** T45
+- **Depends on:** p3-T02
 - **Estimate:** M
 - **Status:** todo
 
 ---
 
-## T47 — Migration `004_tool_calls.sql` + `ConversationStore.appendAssistantMessage(...toolCalls)`
+## p3-T04 — Migration `004_tool_calls.sql` + `ConversationStore.appendAssistantMessage(...toolCalls)`
 
 - **Description:** Add migration `src/db/migrations/004_tool_calls.sql` (`ALTER TABLE messages ADD COLUMN tool_calls TEXT`). Extend `src/services/conversations.ts` `Message` type with `toolCalls?: ToolCallRecord[]`. Extend `ConversationStore.appendAssistantMessage` to accept an optional `toolCalls` parameter; JSON-encode and persist it. Extend `readMessage` and `listMessages` to decode and return it.
 - **Maps to FR:** FR-24, FR-25
@@ -72,7 +72,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
 
 ---
 
-## T48 — `services/agent-tools.ts` (the four tool implementations)
+## p3-T05 — `services/agent-tools.ts` (the four tool implementations)
 
 - **Description:** Create `src/services/agent-tools.ts` with `AGENT_TOOLS` (the four OpenAI tool definitions as `ChatCompletionTool[]`) and `executeAgentTool(name, args)` (dispatches to the appropriate primitive, returns `AgentToolResult`). Each tool wraps an existing service: `get_neighbor_chunks` → `fetchByFilePathAndIndex`, `get_section_chunks` → `fetchByFilePathAndHeadingPath`, `get_chunk` → `qdrantClient.retrieve`, `get_document` → `DocumentStore.get(fileId)` (where `fileId` is reconstructed by stripping the extension from `filePath`).
 - **Maps to FR:** FR-14, FR-30
@@ -82,13 +82,13 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Unit tests: each tool's `NOT_FOUND` path (Qdrant returns empty, SQLite returns null).
   - Unit tests: each tool's `INVALID_ARG` path (missing/wrong-type args).
   - Unit test: `get_neighbor_chunks` with `range > 5` clamps to 5.
-- **Depends on:** T45, T47 (DocumentStore exists)
+- **Depends on:** p3-T02, p3-T04 (DocumentStore exists)
 - **Estimate:** M
 - **Status:** todo
 
 ---
 
-## T49 — `streamChatCompletionWithTools` in `openai-api-wrapper.ts`
+## p3-T06 — `streamChatCompletionWithTools` in `openai-api-wrapper.ts`
 
 - **Description:** Extend `src/services/openai-api-wrapper.ts` with `streamChatCompletionWithTools(messages, tools, signal)` that calls `openai.chat.completions.create({ ..., tools, stream: true })` and yields `{text, toolCalls}` per chunk. The `toolCalls` array is accumulated across chunks (the OpenAI SDK emits partial `tool_calls` per chunk with `index`, incremental `id` / `function.name` / `function.arguments`). The final yield after stream-end is the completed tool_calls array.
 - **Maps to FR:** FR-18, FR-19
@@ -103,7 +103,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
 
 ---
 
-## T50 — `services/agent-loop.ts` (bounded loop, token cap, tool execution)
+## p3-T07 — `services/agent-loop.ts` (bounded loop, token cap, tool execution)
 
 - **Description:** Create `src/services/agent-loop.ts` with `streamAgentChat(params, signal)` — the bounded agent loop generator. Initial retrieval (embed + search) → yield `sources` → build messages with system prompt + history + initial context → loop up to `MAX_AGENT_ITERATIONS` times: call `streamChatCompletionWithTools`, accumulate text + tool_calls, yield `token` events, if no tool_calls → yield `done` and return, else append assistant message + execute each tool call (sequential, with per-iteration token cap via `truncateToTokenBudget`) + yield `tool_call`/`tool_result` events + append tool messages. Track all chunks retrieved via tools as additional sources for citation. Add `src/utils/text-token-budget.ts` with `countTokens` and `truncateToTokenBudget`.
 - **Maps to FR:** FR-15, FR-16, FR-17, FR-18, FR-19, FR-20, FR-21, FR-22, FR-23
@@ -115,13 +115,13 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Unit test (stubbed tool returning a 20K-token result, cap = 10K): yields `tool_result` with `truncated: true`.
   - Unit test (signal aborted between iterations): generator returns cleanly; no more yields.
   - Unit test (OpenAI stream throws): yields `event: error`; generator returns.
-- **Depends on:** T48, T49
+- **Depends on:** p3-T05, p3-T06
 - **Estimate:** L
 - **Status:** todo
 
 ---
 
-## T51 — `routes/chat-stream.ts` extended to dispatch to agentic path; persist `toolCalls`
+## p3-T08 — `routes/chat-stream.ts` extended to dispatch to agentic path; persist `toolCalls`
 
 - **Description:** Extend `src/routes/chat-stream.ts` to dispatch to `streamAgentChat` when `expand=auto`, otherwise to `streamChatCompletion` (existing). Extend `StreamEvent` to include `tool_call` and `tool_result` variants. Add `event: tool_call` and `event: tool_result` SSE write paths. Extend the `done` event payload with `iterations` (1 for non-agentic, `iterations` from the agent loop otherwise). Persist `toolCalls` on the assistant message via the extended `ConversationStore.appendAssistantMessage` when `expand=auto` AND there were tool calls.
 - **Maps to FR:** FR-13, FR-18, FR-19, FR-20, FR-21, FR-22, FR-23, FR-25
@@ -132,13 +132,13 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Route test (stubbed OpenAI tool not supported → SDK throws): handler falls back to `expand=none` path; no `tool_call`/`tool_result` events; logged at `warn`.
   - Route test (client disconnect mid-agent-loop): server aborts; partial message not persisted.
   - E2E (stubbed LLM via `LLM_BASE_URL` env override): real SSE stream includes `tool_call`/`tool_result` events; persisted message has `tool_calls` column populated.
-- **Depends on:** T47, T50
+- **Depends on:** p3-T04, p3-T07
 - **Estimate:** M
 - **Status:** todo
 
 ---
 
-## T52 — Client SSE: `tool_call`/`tool_result` handling + bubble chips
+## p3-T09 — Client SSE: `tool_call`/`tool_result` handling + bubble chips
 
 - **Description:** Extend `web/src/services/stream.ts` to parse the new SSE event types (`tool_call`, `tool_result`). Add `web/src/types.d.ts` `ToolCallRecord`, `ToolResultRecord` types. Create `web/src/components/ToolCallChip.tsx` (expand/collapse, args preview, iteration badge) and `web/src/components/ToolResultChip.tsx` (expand/collapse, summary, truncated flag). Extend `web/src/components/Bubble.tsx` to render the chips below the assistant message when `toolCalls` is present.
 - **Maps to FR:** FR-26
@@ -148,13 +148,13 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Component test: `ToolCallChip` shows args preview; click → full args.
   - Component test: `ToolResultChip` shows summary (e.g. "3 chunks"); `truncated: true` shows truncated badge; click → full result (with truncation banner if truncated).
   - Unit test for `stream.ts` parser: hand-crafted SSE chunk with `event: tool_call\ndata: {...}\n\n` is parsed correctly; new event types are dispatched.
-- **Depends on:** T51
+- **Depends on:** p3-T08
 - **Estimate:** M
 - **Status:** todo
 
 ---
 
-## T53 — Chat toolbar: expand-mode toggle
+## p3-T10 — Chat toolbar: expand-mode toggle
 
 - **Description:** Extend `web/src/routes/Chat.tsx` toolbar with an expand-mode toggle (`None` / `Siblings` / `Sections` / `Auto`). Default is `Auto` (per OQ-1 user decision). Persist the selection in `localStorage` (key `dockhoj.expandMode`); read on mount. Pass the selected mode as `expand` in the chat send body. Existing chat continue with their original mode (no in-flight migration). Server-side `parseExpandMode` default changes from `'none'` to `'auto'` (in `routes/chat-stream.ts` and `routes/chat.ts`).
 - **Maps to FR:** FR-13, FR-27, FR-28
@@ -173,7 +173,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
 
 ---
 
-## T54 — Coverage thresholds + README updates + final integration test pass
+## p3-T11 — Coverage thresholds + README updates + final integration test pass
 
 - **Description:** Update `vitest.config.ts` coverage thresholds to include the new code paths at ≥ 80% lines each (new files: `document-store.ts`, `agent-tools.ts`, `agent-loop.ts`, `text-token-budget.ts`, `api-documents.ts`; new SPA components). Update `README.md` with: new env vars (`MAX_AGENT_ITERATIONS`, `TOOL_RESULT_TOKEN_CAP`), new endpoints (`/api/documents`, `/api/documents/:fileId`), new SSE events (`tool_call`, `tool_result`), updated `/api/status` shape (adds `documents`), expand-mode docs (None/Siblings/Sections/Auto). Update the "Breaking changes from Phase 02 → Phase 03" section (none — Phase 03 is additive). Run the full `./restart.sh` + `curl` smoke test to validate the new surfaces end-to-end.
 - **Maps to FR:** FR-32, FR-34, NFR-3, NFR-7
@@ -185,7 +185,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - `curl /api/documents` returns `[]` on fresh boot; populates after an upload.
   - `curl -X POST /api/chat/stream -d '{"q":"hello","expand":"auto"}'` returns a valid SSE stream with the new event envelope.
   - README updated; user signs off.
-- **Depends on:** T44, T45, T46, T47, T48, T49, T50, T51, T52, T53
+- **Depends on:** p3-T01, p3-T02, p3-T03, p3-T04, p3-T05, p3-T06, p3-T07, p3-T08, p3-T09, p3-T10
 - **Estimate:** M
 - **Status:** todo
 

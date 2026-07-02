@@ -9,7 +9,7 @@
 - **Worktree:** n/a
 
 ## Pointers
-- **Tasks:** T44 … T54 in [`TASKS.md`](./TASKS.md) (this folder)
+- **Tasks:** p3-T01 … p3-T11 in [`TASKS.md`](./TASKS.md) (this folder)
 - **Spec:** [`requirements.md`](./requirements.md), [`design.md`](./design.md)
 - **Related specs:** Phase 01 (`../phase-01-smart-chunker-and-cleanup/`), Phase 02 (`../phase-02-frontend-streaming-and-persistence/`)
 

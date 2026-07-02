@@ -11,7 +11,7 @@ import type Database from 'better-sqlite3';
 
 type DB = Database.Database;
 
-// POST /api/chat/stream — Server-Sent Events chat endpoint (T33).
+// POST /api/chat/stream — Server-Sent Events chat endpoint (p2-p1-T12).
 //
 // Wire format (one SSE frame per event):
 //   event: meta    data: { sessionId, userMessageId }

@@ -9,12 +9,12 @@ import Database from 'better-sqlite3';
 import { migrate } from '../../src/db/migrate.js';
 import { chatRoutes } from '../../src/routes/chat.js';
 
-// T29 — chat tests updated to use the new /api/chat path and to
+// p2-T08 — chat tests updated to use the new /api/chat path and to
 // inject an in-memory SQLite DB (the chat route now requires one
 // since persistence moved from the in-memory Map to ConversationStore
-// in T27). The /api/chat route exercises the OpenAI SDK; we keep the
+// in p2-T06). The /api/chat route exercises the OpenAI SDK; we keep the
 // tests scoped to validation + session lifecycle rather than mocking
-// the LLM call (T33 covers the streaming path under stubbed streams).
+// the LLM call (p2-p1-T12 covers the streaming path under stubbed streams).
 
 describe('/api/chat', () => {
   let app: ReturnType<typeof Fastify>;

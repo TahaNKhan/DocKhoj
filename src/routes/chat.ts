@@ -116,7 +116,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         score: r.score ?? 0,
       })));
 
-      // First-exchange auto-title is handled by /api/chat/stream (T33)
+      // First-exchange auto-title is handled by /api/chat/stream (p2-p1-T12)
       // which can deliver it via SSE event: title. For /api/chat the
       // sync path, the title field is whatever the conversation already
       // has (still 'New chat' until the async generator lands; the
@@ -140,7 +140,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // DELETE /api/chat/:sessionId — drop a session entirely. T28's
+  // DELETE /api/chat/:sessionId — drop a session entirely. p2-T07's
   // /api/sessions/:id DELETE does the same thing with cascade; this
   // alias keeps the original Phase 01 contract intact.
   fastify.delete<{ Params: { sessionId: string } }>(

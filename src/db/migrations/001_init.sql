@@ -1,9 +1,9 @@
--- Phase 02 / T26: conversation persistence.
+-- Phase 02 / p2-T05: conversation persistence.
 --
 -- Schema decisions:
 -- - conversations: id is UUIDv4 (matches the existing regex
 --   ^[A-Za-z0-9_-]{1,64}$). title defaults to 'New chat' until the
---   async LLM title generator (T31) overwrites it. updated_at is
+--   async LLM title generator (p2-p1-T10) overwrites it. updated_at is
 --   the source of truth for sidebar ordering.
 -- - messages: role constrained to user/assistant at the DB layer.
 --   sources is a JSON-encoded array of Source objects (set only on

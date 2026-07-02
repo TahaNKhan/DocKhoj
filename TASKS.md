@@ -6,13 +6,13 @@ The currently-active phase (if any) is the only one with non-`done` tasks; all o
 
 ## Per-phase task lists
 
-- **Phase 01 — Smart Chunker & Cleanup** — [`docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md`](./docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md) — T1 … T21. **Done** (per spec README + git log `9bb6cf3` … `014a4f2`).
-- **Phase 02 — Frontend, Streaming, and Persistence** — [`docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md`](./docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md) — T22 … T49 (T44-T49 are post-spec priority follow-ups). **Done** (per spec README + git log `2c81035` … `6425682`).
-- **Phase 03 — Document Deletion and Agentic RAG** — [`docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md`](./docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md) — T44 … T54. **Planning** (spec written, awaiting implementation).
+- **Phase 01 — Smart Chunker & Cleanup** — [`docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md`](./docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md) — p1-T01 … p1-T21. **Done** (per spec README + git log `9bb6cf3` … `014a4f2`).
+- **Phase 02 — Frontend, Streaming, and Persistence** — [`docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md`](./docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md) — p2-T01 … p2-T26 (p2-T21 … p2-T26 are post-spec priority follow-ups). **Done** (per spec README + git log `2c81035` … `6425682`).
+- **Phase 03 — Document Deletion and Agentic RAG** — [`docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md`](./docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md) — p3-T01 … p3-T11. **Planning** (spec written, awaiting implementation).
 
 ## Numbering
 
-T-numbers are scoped to the phase folder. The same `T44` in two different phase folders refers to two different tasks; the folder disambiguates. Within a phase, T-numbers are sequential.
+Task IDs use the `pX-TYY` form: `p1-TYY` for Phase 01, `p2-TYY` for Phase 02, `p3-TYY` for Phase 03. The leading `X` (1, 2, 3) disambiguates phases; within a phase the two-digit number is sequential. Historical references to the old `T<N>` form (where `N` was a global task number from the central `TASKS.md`) are preserved in a few places as `(T49 in legacy numbering)` for cross-reference with the Git log.
 
 ## Notes
 

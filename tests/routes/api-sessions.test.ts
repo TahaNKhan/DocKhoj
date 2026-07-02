@@ -4,7 +4,7 @@ import Database from 'better-sqlite3';
 import { migrate } from '../../src/db/migrate.js';
 import { sessionRoutes } from '../../src/routes/api-sessions.js';
 
-// T28 tests — /api/sessions routes via fastify.inject. Each test
+// p2-T07 tests — /api/sessions routes via fastify.inject. Each test
 // builds a fresh Fastify app bound to an in-memory DB so tests are
 // isolated.
 

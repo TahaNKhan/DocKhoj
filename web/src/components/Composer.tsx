@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 // Composer — autosize textarea + send. Enter sends, Shift+Enter inserts
-// a newline. T25 ships a no-op submit handler; T34 wires it to the SSE
+// a newline. p2-T04 ships a no-op submit handler; p2-T13 wires it to the SSE
 // stream endpoint.
 
 interface Props {

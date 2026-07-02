@@ -13,7 +13,7 @@ import {
   type Message,
 } from '../../src/services/sessions';
 
-// T43 — coverage for the SPA's fetch wrappers and localStorage
+// p2-T20 — coverage for the SPA's fetch wrappers and localStorage
 // helpers. The happy-dom env provides window.localStorage.
 
 describe('sessions fetch wrappers', () => {

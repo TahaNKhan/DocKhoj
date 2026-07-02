@@ -13,7 +13,7 @@ import { truncateForLog, uploadLog as log } from '../utils/logger.js';
 const UPLOAD_DIR = './documents';
 const BATCH_SIZE = 10;
 
-// Upload progress strategy (replaces the earlier T35 SSE approach):
+// Upload progress strategy (replaces the earlier p2-p1-T14 SSE approach):
 //   - Transport progress (file bytes flowing from the browser to the
 //     server) is reported by the BROWSER via XMLHttpRequest's native
 //     `upload.onprogress` event. No server-side work needed.

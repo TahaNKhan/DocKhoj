@@ -3,7 +3,7 @@ import { render, cleanup, fireEvent } from '@testing-library/preact';
 import { SourceDrawer } from '../../src/components/SourceDrawer';
 import type { Source } from '../../src/components/Bubble';
 
-// T37 — SourceDrawer. The drawer should:
+// p2-T16 — SourceDrawer. The drawer should:
 //   1. Render nothing when source is null.
 //   2. Render the chunk, metadata, and download link when open.
 //   3. Close on ESC.

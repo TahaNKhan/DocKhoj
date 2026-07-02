@@ -134,7 +134,7 @@ repo/
 ### Migration `003_documents.sql`
 
 ```sql
--- Phase 03 / T44: track uploaded documents so we can list and delete them.
+-- Phase 03 / p3-T01: track uploaded documents so we can list and delete them.
 --
 -- file_id is the SAME UUIDv4 used in the on-disk filename (the existing
 -- upload route does `${fileId}${ext}` to derive the on-disk name).
@@ -179,7 +179,7 @@ CREATE INDEX IF NOT EXISTS idx_documents_uploaded_at
 ### Migration `004_tool_calls.sql`
 
 ```sql
--- Phase 03 / T47: persist agent-loop tool calls on assistant messages.
+-- Phase 03 / p3-T04: persist agent-loop tool calls on assistant messages.
 --
 -- tool_calls is JSON-encoded Array<ToolCallRecord>. Nullable.
 -- Existing rows get NULL (the ALTER ADD COLUMN with NULL default
@@ -1162,17 +1162,17 @@ No changes to `Dockerfile` or `docker-compose.yml`. No new services, no new volu
 
 Each task is a reviewable commit; the spec's `TASKS.md` is the canonical list.
 
-1. **T44** — `003_documents.sql` + `DocumentStore` + wire into upload route + `documents` field on `/api/status`.
-2. **T45** — `deleteByFilePath` + `routes/api-documents.ts` (GET + DELETE) + tests.
-3. **T46** — SPA: `services/documents.ts` + `DocumentsList` component + integrate into `/upload` page.
-4. **T47** — `004_tool_calls.sql` + `ConversationStore.appendAssistantMessage(...toolCalls)` + tests.
-5. **T48** — `services/agent-tools.ts` (the four tools) + `AGENT_TOOLS` definitions + tests.
-6. **T49** — `streamChatCompletionWithTools` in `openai-api-wrapper.ts` + tests.
-7. **T50** — `services/agent-loop.ts` (bounded loop, token cap, tool execution) + tests.
-8. **T51** — `routes/chat-stream.ts` extended to dispatch to agentic path; `StreamEvent` extended with `tool_call` and `tool_result`; persist `toolCalls` on assistant messages; tests.
-9. **T52** — Client SSE parser handles new event types; `Bubble.tsx` renders tool chips; `ToolCallChip` + `ToolResultChip` components + tests.
-10. **T53** — Chat toolbar: expand-mode toggle (None/Siblings/Sections/Auto) with localStorage persistence.
-11. **T54** — Coverage thresholds + README updates + final integration test pass.
+1. **p3-T01** — `003_documents.sql` + `DocumentStore` + wire into upload route + `documents` field on `/api/status`.
+2. **p3-T02** — `deleteByFilePath` + `routes/api-documents.ts` (GET + DELETE) + tests.
+3. **p3-T03** — SPA: `services/documents.ts` + `DocumentsList` component + integrate into `/upload` page.
+4. **p3-T04** — `004_tool_calls.sql` + `ConversationStore.appendAssistantMessage(...toolCalls)` + tests.
+5. **p3-T05** — `services/agent-tools.ts` (the four tools) + `AGENT_TOOLS` definitions + tests.
+6. **p3-T06** — `streamChatCompletionWithTools` in `openai-api-wrapper.ts` + tests.
+7. **p3-T07** — `services/agent-loop.ts` (bounded loop, token cap, tool execution) + tests.
+8. **p3-T08** — `routes/chat-stream.ts` extended to dispatch to agentic path; `StreamEvent` extended with `tool_call` and `tool_result`; persist `toolCalls` on assistant messages; tests.
+9. **p3-T09** — Client SSE parser handles new event types; `Bubble.tsx` renders tool chips; `ToolCallChip` + `ToolResultChip` components + tests.
+10. **p3-T10** — Chat toolbar: expand-mode toggle (None/Siblings/Sections/Auto) with localStorage persistence.
+11. **p3-T11** — Coverage thresholds + README updates + final integration test pass.
 
 ## Open decisions
 

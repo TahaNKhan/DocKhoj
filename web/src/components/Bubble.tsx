@@ -3,7 +3,7 @@
 // when `streaming` is true. Sources chips render when `sources` is
 // provided. Follow-up pills render when `followups` is provided.
 //
-// Assistant bubbles render their text as sanitized markdown (T44 /
+// Assistant bubbles render their text as sanitized markdown (p2-T21 /
 // FR-33). User bubbles render plain text — we never trust the user's
 // own input to be safe to inject as HTML.
 
@@ -12,7 +12,7 @@ import { renderMarkdown } from '../services/markdown';
 // Source — what a chat bubble's [1] / [2] chip carries. The Bubble
 // renders just enough to identify the chunk (number, fileName, page);
 // the full chunk text + heading path + score live here so the
-// SourceDrawer (T37) can show them when a chip is clicked.
+// SourceDrawer (p2-T16) can show them when a chip is clicked.
 export interface Source {
   id: string;
   number: number;

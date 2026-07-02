@@ -2,7 +2,7 @@
  * Source: mockups/dockhoj-upload-v2.html, ported to the same
  * tokens/animations as the chat surface.
  *
- * Layout split (post-T45/T46): the body is pinned to the viewport
+ * Layout split (post-p2-T22/p2-T23): the body is pinned to the viewport
  * (see base.css). The chat route owns its own scrolling inside
  * `.stream`; the upload route needs an equivalent.
  *
@@ -17,7 +17,7 @@
  *   .upload-shell — centered content column (max-width 1080px). NO
  *                   scrolling here; it's just a layout container.
  *
- * The split keeps the T45 invariant intact: body stays pinned, each
+ * The split keeps the p2-T22 invariant intact: body stays pinned, each
  * page owns its own scrolling, but the scrollbar is positioned at
  * the viewport edge the way every other app does it. */
 

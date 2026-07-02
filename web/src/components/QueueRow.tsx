@@ -1,4 +1,4 @@
-// QueueRow — one file in the upload queue. T36 drives progress via
+// QueueRow — one file in the upload queue. p2-T15 drives progress via
 // XHR's `upload.onprogress` (transport) + the POST response (final).
 //
 // Status transitions during a single upload:

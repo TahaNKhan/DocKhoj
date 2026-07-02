@@ -178,7 +178,7 @@
   font-size: 11px;
 }
 
-/* Source drawer (T37) — inline panel that opens on a chip click.
+/* Source drawer (p2-T16) — inline panel that opens on a chip click.
  * Slides in from the right; backdrop dims the rest of the page.
  * On narrow viewports (<720 px) the drawer goes full-width. */
 

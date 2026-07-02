@@ -1,6 +1,6 @@
 import { useState } from 'preact/hooks';
 
-// Dropzone — drag-drop or click. T25 ships the visual + intent; T36
+// Dropzone — drag-drop or click. p2-T04 ships the visual + intent; p2-T15
 // wires POST /api/upload + GET /api/upload/progress.
 
 interface Props {

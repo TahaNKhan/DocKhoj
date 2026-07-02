@@ -120,7 +120,7 @@ async function shutdown(server: Awaited<ReturnType<typeof buildApp>>, signal: st
 
 async function start() {
   try {
-    // SQLite migrations first — sessions routes (T28) and any future
+    // SQLite migrations first — sessions routes (p2-T07) and any future
     // schema-dependent routes both need the schema applied. Run before
     // initCollection so a fresh volume doesn't end up with a Qdrant
     // collection pointing at a SQLite that hasn't been migrated.

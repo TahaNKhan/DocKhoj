@@ -3,7 +3,7 @@ import Database from 'better-sqlite3';
 import { migrate } from '../../src/db/migrate.js';
 import { ConversationStore } from '../../src/services/conversations.js';
 
-// T27 tests — ConversationStore against an in-memory DB. Covers the
+// p2-T06 tests — ConversationStore against an in-memory DB. Covers the
 // FR-56 acceptance: CRUD paths, message ordering, cascade delete,
 // setGeneratedTitle rejecting overwrite of user-renamed titles,
 // updatedAt bump on append.
