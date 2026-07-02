@@ -41,13 +41,14 @@ describe('migrate', () => {
     expect(after).toHaveLength(1);
   });
 
-  it('applies 001_init.sql and 002_title_source.sql and records both versions', () => {
+  it('applies 001_init.sql, 002_title_source.sql, and 003_documents.sql and records all three versions', () => {
     const result = migrate(db);
     expect(result.applied).toContain(1);
     expect(result.applied).toContain(2);
+    expect(result.applied).toContain(3);
 
     const rows = db.prepare('SELECT id FROM _migrations ORDER BY id').all() as { id: number }[];
-    expect(rows.map((r) => r.id)).toEqual([1, 2]);
+    expect(rows.map((r) => r.id)).toEqual([1, 2, 3]);
 
     const conversations = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'")
@@ -59,8 +60,17 @@ describe('migrate', () => {
       .all();
     expect(messages).toHaveLength(1);
 
+    const documents = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
+      .all();
+    expect(documents).toHaveLength(1);
+
     const cols = db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[];
     expect(cols.map((c) => c.name)).toContain('title_source');
+
+    const docCols = db.prepare("PRAGMA table_info(documents)").all() as { name: string }[];
+    expect(docCols.map((c) => c.name)).toContain('file_id');
+    expect(docCols.map((c) => c.name)).toContain('chunk_count');
   });
 
   it('is idempotent — second boot is a no-op', () => {

@@ -36,6 +36,8 @@ vi.mock('openai', () => ({
 
 import Fastify from 'fastify';
 import multipart from '@fastify/multipart';
+import Database from 'better-sqlite3';
+import { migrate } from '../../src/db/migrate.js';
 import { uploadRoutes } from '../../src/routes/upload.js';
 
 let TEMP_DIR: string;
@@ -57,6 +59,7 @@ function fakeMultipart(filename: string, content: string) {
 }
 
 describe('POST /upload', () => {
+  let db: ReturnType<typeof Database>;
   beforeEach(async () => {
     TEMP_DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'dockhoj-test-'));
     ORIGINAL_CWD = process.cwd();
@@ -64,15 +67,23 @@ describe('POST /upload', () => {
     mockEmbedTexts.mockReset();
     mockEmbedTexts.mockResolvedValue([[0.1, 0.2], [0.3, 0.4]]);
     mockUpsertChunks.mockClear();
+    // Phase 03 / p3-T01: the upload route now writes a row in the
+    // `documents` table after a successful index. Spin up an
+    // in-memory DB so each test is hermetic.
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db);
   });
 
   afterEach(async () => {
+    db.close();
     process.chdir(ORIGINAL_CWD);
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
   });
 
   it('returns 400 when no file is included', async () => {
     const app = Fastify();
+    app.decorate('db', db);
     await app.register(multipart);
     await app.register(uploadRoutes);
 
@@ -89,6 +100,7 @@ describe('POST /upload', () => {
 
   it('indexes an uploaded markdown file', async () => {
     const app = Fastify();
+    app.decorate('db', db);
     await app.register(multipart);
     await app.register(uploadRoutes);
 
@@ -110,19 +122,25 @@ describe('POST /upload', () => {
 });
 
 describe('GET /files', () => {
+  let db: ReturnType<typeof Database>;
   beforeEach(async () => {
     TEMP_DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'dockhoj-test-'));
     ORIGINAL_CWD = process.cwd();
     process.chdir(TEMP_DIR);
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db);
   });
 
   afterEach(async () => {
+    db.close();
     process.chdir(ORIGINAL_CWD);
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
   });
 
   it('lists files in the documents directory', async () => {
     const app = Fastify();
+    app.decorate('db', db);
     await app.register(multipart);
     await app.register(uploadRoutes);
 

@@ -4,11 +4,15 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
+import type Database from 'better-sqlite3';
 import { parseFile } from '../services/parser.js';
 import { embedText, embedTexts } from '../services/embed.js';
 import { upsertChunks, type DocumentChunk } from '../services/qdrant.js';
+import { DocumentStore } from '../services/document-store.js';
 import { chunkBlocks } from '../utils/chunk.js';
 import { truncateForLog, uploadLog as log } from '../utils/logger.js';
+
+type DB = Database.Database;
 
 const UPLOAD_DIR = './documents';
 const BATCH_SIZE = 10;
@@ -42,7 +46,8 @@ async function processUpload(
   filePath: string,
   fileName: string,
   fileId: string,
-  parsed: Awaited<ReturnType<typeof parseFile>>
+  parsed: Awaited<ReturnType<typeof parseFile>>,
+  db: DB
 ): Promise<ProcessUploadResult> {
   const chunkMaxTokens = parseInt(process.env.CHUNK_MAX_TOKENS || '512');
   const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP_TOKENS || '64');
@@ -98,6 +103,35 @@ async function processUpload(
       }
     }
 
+    // Phase 03 / p3-T01: record the document in SQLite so the
+    // Documents list can show it and DELETE /api/documents/:fileId
+    // can find the row. Insert AFTER the Qdrant upsert succeeds so
+    // a parse/embedding failure (return below) leaves no row.
+    // If the SQLite insert itself fails, the chunks are still
+    // indexed and the file is on disk — log and surface a
+    // 500-equivalent failure so the SPA can retry. The
+    // DocumentStore uses the same db singleton, so the
+    // table existence is guaranteed by migration 003.
+    try {
+      const bytes = fsSync.statSync(filePath).size;
+      new DocumentStore(db).insert({
+        fileId,
+        fileName,
+        fileType: parsed.fileType,
+        bytes,
+        uploadedAt: nowSqlite(),
+        chunkCount: totalIndexed,
+      });
+    } catch (err) {
+      log.error({ err, fileName, fileId }, 'Failed to record document row');
+      return {
+        status: 'failed',
+        fileName,
+        fileId,
+        error: 'Failed to record document',
+      };
+    }
+
     return {
       status: 'success',
       fileName,
@@ -137,6 +171,7 @@ async function saveUploadedFile(
 
 export async function uploadRoutes(fastify: FastifyInstance) {
   await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  const db = (fastify as unknown as { db: DB }).db;
 
   // POST /api/upload — single file (FR-25).
   fastify.post('/api/upload', async (request, reply) => {
@@ -175,7 +210,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: message });
     }
 
-    const result = await processUpload(filePath, fileName, fileId, parsed);
+    const result = await processUpload(filePath, fileName, fileId, parsed, db);
 
     if (result.status === 'failed') {
       await fs.unlink(filePath).catch(() => {});
@@ -243,7 +278,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
 
         try {
           const parsed = await parseFile(saved.filePath);
-          const result = await processUpload(saved.filePath, saved.fileName, saved.fileId, parsed);
+          const result = await processUpload(saved.filePath, saved.fileName, saved.fileId, parsed, db);
           if (result.status === 'failed') {
             await fs.unlink(saved.filePath).catch(() => {});
           }
@@ -287,3 +322,12 @@ export async function uploadRoutes(fastify: FastifyInstance) {
 }
 
 void embedText;
+
+// SQLite datetime('now') shape: 'YYYY-MM-DD HH:MM:SS' UTC. Matches the
+// convention used by services/conversations.ts (nowIso).
+function nowSqlite(): string {
+  return new Date()
+    .toISOString()
+    .replace('T', ' ')
+    .replace(/\.\d{3}Z$/, '');
+}
