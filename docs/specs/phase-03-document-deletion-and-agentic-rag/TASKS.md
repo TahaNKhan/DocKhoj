@@ -19,7 +19,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - E2E: parse-failure upload (corrupt file) → `documents` count unchanged.
 - **Depends on:** —
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done (commits `61b640c`, `b97ef31`, `b254038`)
 
 ---
 
@@ -38,7 +38,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Route test: re-DELETE after successful DELETE → 404 (idempotent from SPA perspective).
 - **Depends on:** p3-T01
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done (commits `b97ef31`, `b254038`, `a6f0c63`)
 
 ---
 
@@ -53,7 +53,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - E2E (Docker): upload 2 docs → both appear in list; delete one → list updates + `/api/documents` reflects + `/api/status.documents` updates.
 - **Depends on:** p3-T02
 - **Estimate:** M
-- **Status:** todo
+- **Status:** done (commit `a6f0c63`)
 
 ---
 
@@ -68,7 +68,7 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
   - Unit test: append assistant message WITHOUT `toolCalls` → `toolCalls` is `undefined` on the returned message.
 - **Depends on:** —
 - **Estimate:** S
-- **Status:** todo
+- **Status:** done (commit `4bef46e`)
 
 ---
 
