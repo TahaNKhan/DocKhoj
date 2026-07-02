@@ -169,7 +169,7 @@ export function App() {
     }
   }
 
-  function handleSubmit(text: string) {
+  function handleSubmit(text: string, options?: { expand?: string }) {
     if (!activeId) return;
     // Cancel any in-flight stream — one chat at a time.
     streamRef.current?.close();
@@ -191,6 +191,8 @@ export function App() {
       sources: [],
     });
 
+    const expand = options?.expand ?? 'auto';
+
     let acc = '';
     // Local tool-call accumulator (p3-T09). The agent loop pairs
     // `tool_call` (BEFORE execution) with `tool_result` (AFTER). We
@@ -198,7 +200,7 @@ export function App() {
     // matching `tool_result` arrives.
     let pendingToolCalls: Partial<ToolCallRecord>[] = [];
     streamRef.current = openChatStream(
-      { q: text, sessionId: activeId },
+      { q: text, sessionId: activeId, expand },
       {
         onEvent: (ev) => {
           if (ev.type === 'meta') {

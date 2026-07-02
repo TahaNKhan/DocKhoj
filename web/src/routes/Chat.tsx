@@ -10,6 +10,11 @@ import type { ToolCallRecord } from '../types';
 // Chat — presentational route. Owns no state; the parent (<App>)
 // holds sessions, messages, and the streaming turn, and passes them
 // in. Renders the chat column: toolbar / stream / composer.
+//
+// Phase 03 / p3-T10 — expand-mode toggle. Chat owns the mode and
+// persists it to localStorage under `dockhoj.expandMode`. The mode is
+// passed to onSubmit so App includes it in the next stream's body.
+// Default is `auto` per OD-1 / OQ-1.
 
 export interface PendingTurn {
   userMessageId: string;
@@ -21,12 +26,43 @@ export interface PendingTurn {
   errorMessage?: string;
 }
 
+export type ExpandMode = 'none' | 'siblings' | 'sections' | 'auto';
+
+const EXPAND_OPTIONS: Array<{ value: ExpandMode; label: string; description: string }> = [
+  { value: 'none', label: 'None', description: 'no expansion (fastest)' },
+  { value: 'siblings', label: 'Siblings', description: '±2 chunks (fast)' },
+  { value: 'sections', label: 'Sections', description: 'full section (medium)' },
+  { value: 'auto', label: 'Auto', description: 'agentic (slowest, best answers)' },
+];
+
+const STORAGE_KEY = 'dockhoj.expandMode';
+
+function loadInitialMode(): ExpandMode {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw === 'none' || raw === 'siblings' || raw === 'sections' || raw === 'auto') {
+      return raw;
+    }
+  } catch {
+    /* private mode / storage disabled */
+  }
+  return 'auto';
+}
+
+function saveMode(mode: ExpandMode): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, mode);
+  } catch {
+    /* noop */
+  }
+}
+
 interface Props {
   activeSession: Conversation | null;
   loading: boolean;
   messages: Message[];
   pending: PendingTurn | null;
-  onSubmit: (text: string) => void;
+  onSubmit: (text: string, options: { expand: ExpandMode }) => void;
   status: ServerStatus | null;
 }
 
@@ -38,6 +74,37 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
   // it. Living in Chat.tsx (not App.tsx) because the drawer is a
   // chat-column affordance — it shouldn't appear over /upload.
   const [openSource, setOpenSource] = useState<Source | null>(null);
+
+  // p3-T10 — expand-mode toggle state. Default 'auto' (Phase 03
+  // behavior change from Phase 02's 'none' default — documented in
+  // README.md as a breaking behavior change).
+  const [expandMode, setExpandMode] = useState<ExpandMode>(loadInitialMode);
+  const [modePopoverOpen, setModePopoverOpen] = useState(false);
+
+  function selectMode(mode: ExpandMode) {
+    setExpandMode(mode);
+    saveMode(mode);
+    setModePopoverOpen(false);
+  }
+
+  // Close the popover on outside click.
+  const modeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!modePopoverOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (modeRef.current && !modeRef.current.contains(e.target as Node)) {
+        setModePopoverOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', onDocClick);
+    return () => document.removeEventListener('mousedown', onDocClick);
+  }, [modePopoverOpen]);
+
+  const modeLabel = EXPAND_OPTIONS.find((o) => o.value === expandMode)?.label ?? 'Auto';
+
+  function handleSubmit(text: string) {
+    onSubmit(text, { expand: expandMode });
+  }
 
   // Model pill: show the configured chat model + its probed context
   // size (e.g. "gpt-4o · 128k ctx"). While /api/status is still being
@@ -105,6 +172,33 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
           </span>
           <span class="car">▾</span>
         </div>
+        <div class="expand-toggle" ref={modeRef}>
+          <button
+            class={`mode-chip mode-${expandMode}`}
+            aria-haspopup="listbox"
+            aria-expanded={modePopoverOpen}
+            onClick={() => setModePopoverOpen((v) => !v)}
+          >
+            <span class="mode-chip-label">{modeLabel}</span>
+            <span class="caret">▾</span>
+          </button>
+          {modePopoverOpen && (
+            <div class="mode-popover" role="listbox">
+              {EXPAND_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  role="option"
+                  aria-selected={opt.value === expandMode}
+                  class={opt.value === expandMode ? 'selected' : ''}
+                  onClick={() => selectMode(opt.value)}
+                >
+                  <span class="mode-name">{opt.label}</span>
+                  <span class="mode-desc">— {opt.description}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <div class="stream" ref={streamRef}>
@@ -171,7 +265,7 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
         )}
       </div>
 
-      <Composer disabled={pending?.aiStreaming} onSubmit={onSubmit} />
+      <Composer disabled={pending?.aiStreaming} onSubmit={handleSubmit} />
       <SourceDrawer source={openSource} onClose={() => setOpenSource(null)} />
     </section>
   );
