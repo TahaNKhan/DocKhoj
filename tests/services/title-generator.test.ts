@@ -61,9 +61,75 @@ describe('generateConversationTitle', () => {
     const ac = new AbortController();
     await generateConversationTitle('x', 'y', ac.signal);
     expect(mockCreate).toHaveBeenCalledWith(
-      expect.objectContaining({ max_tokens: 30, temperature: 0.3 }),
+      expect.objectContaining({ max_tokens: 20, temperature: 0.3 }),
       expect.objectContaining({ signal: ac.signal })
     );
+  });
+
+  it('strips a leading "Title:" prefix the model occasionally emits', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'Title: Cooking pasta al dente' } }],
+    });
+    expect(await generateConversationTitle('x', 'y')).toBe('Cooking pasta al dente');
+  });
+
+  it('falls back to the topic phrase inside the think block when the LLM emits nothing visible', async () => {
+    // Pattern observed with MiniMax-M3: the model wraps everything
+    // in `<think>...</think>` and emits no text after — so the
+    // extractor has to mine the block.
+    mockCreate.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content:
+            '<think>The user asked about cooking pasta, but the assistant response was about HOA documents. The topic is cooking pasta.</think>',
+        },
+      }],
+    });
+    const out = await generateConversationTitle('x', 'y');
+    // Extractor pulls "cooking pasta" — whatever sits after "about".
+    expect(out.toLowerCase()).toContain('cooking pasta');
+  });
+
+  it('strips an entire <think>...</think> block when content follows', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content:
+            '<think>Some reasoning that should not leak through.</think>Pasta cooking tips',
+        },
+      }],
+    });
+    const out = await generateConversationTitle('x', 'y');
+    expect(out).toBe('Pasta cooking tips');
+  });
+
+  it('returns empty string when the think block has no extractable topic', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{
+        message: {
+          content: '<think>The user asked a question.</think>',
+        },
+      }],
+    });
+    expect(await generateConversationTitle('x', 'y')).toBe('');
+  });
+
+  it('discards titles that look like leaked system-prompt fragments', async () => {
+    // MiniMax-M3 regurgitation patterns observed in production.
+    for (const leaked of [
+      '(5-8 words, ≤80 chars',
+      '5-8 words or less',
+      'respond with only the title',
+      'do not wrap your response',
+      'Output: title here',
+      'the user asked about cooking',
+    ]) {
+      mockCreate.mockResolvedValueOnce({
+        choices: [{ message: { content: leaked } }],
+      });
+      const out = await generateConversationTitle('x', 'y');
+      expect(out, `should have discarded "${leaked}"`).toBe('');
+    }
   });
 });
 
