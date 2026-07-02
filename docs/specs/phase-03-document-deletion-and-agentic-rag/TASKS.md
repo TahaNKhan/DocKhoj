@@ -292,6 +292,20 @@ Reported after Phase 03 was signed off. These are all bug-fixes / UX polish — 
 - **Estimate:** M
 - **Status:** done (this commit)
 
+### p3-T19 — Expand-mode dropdown: proper popover styling (was inline)
+
+- **Description:** The expand-mode toggle in the chat toolbar had **no CSS** for `.mode-popover` / `.mode-chip` / `.mode-name` / `.mode-desc` / `.caret` — when the popover opened, the four options rendered as raw `<button>` elements stacked horizontally inline (because `<button>` is `inline-block` by default and the popover has no `position: absolute`), so all four labels + descriptions ran together on one line. The user wanted a real dropdown. Add a proper floating-card popover anchored to the chip, options stacked vertically, with mobile-friendly constraints (44px touch targets, `max-width: calc(100vw - 32px)` so the popover never overflows the viewport, larger padding on narrow screens) and a focus ring for keyboard users. Caret rotates 180° when the popover is open. Existing tests still pass (JSX structure unchanged); two new tests pin the toggle-closed + `aria-expanded` behavior.
+- **Maps to FR:** FR-27 (existing — toolbar expand-mode toggle), informal UX feedback after Phase 03 ship
+- **Maps to design:** §Expand-mode toggle (p3-T10) — CSS-only fix
+- **Acceptance:**
+  - `Chat-expand-mode.test.tsx`: clicking the chip while the popover is open closes it (toggle behavior).
+  - `Chat-expand-mode.test.tsx`: the chip's `aria-expanded` reflects the popover state.
+  - All other existing Chat-expand-mode tests still pass.
+  - E2E: at desktop width the popover floats below the chip with vertical option rows; on a narrow viewport the popover stays inside the screen and the touch targets stay ≥ 44px.
+- **Depends on:** —
+- **Estimate:** S
+- **Status:** done (this commit)
+
 ## Notes / blockers
 
 _(none yet)_

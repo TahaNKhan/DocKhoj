@@ -209,6 +209,43 @@ describe('Chat — expand-mode toggle', () => {
     expect(container.querySelector('.mode-chip-label')?.textContent).toBe('Auto');
   });
 
+  it('clicking the chip a second time closes the popover (toggle behavior)', () => {
+    const { container } = render(
+      <Chat
+        activeSession={makeSession()}
+        loading={false}
+        messages={[]}
+        pending={null}
+        onSubmit={() => {}}
+        status={null}
+      />
+    );
+    const chip = container.querySelector('.mode-chip') as HTMLButtonElement;
+    fireEvent.click(chip);
+    expect(container.querySelector('.mode-popover')).not.toBeNull();
+    fireEvent.click(chip);
+    expect(container.querySelector('.mode-popover')).toBeNull();
+  });
+
+  it('marks the chip aria-expanded=true while the popover is open', () => {
+    const { container } = render(
+      <Chat
+        activeSession={makeSession()}
+        loading={false}
+        messages={[]}
+        pending={null}
+        onSubmit={() => {}}
+        status={null}
+      />
+    );
+    const chip = container.querySelector('.mode-chip') as HTMLButtonElement;
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(chip);
+    expect(chip.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(chip);
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+  });
+
   it('renders existing history messages without the chat surface blowing up', () => {
     const messages: Message[] = [
       makeMessage({ id: 'm1', role: 'user', content: 'hi' }),

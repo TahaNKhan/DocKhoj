@@ -279,6 +279,148 @@
   display: none;
 }
 
+/* p3-T19 — expand-mode dropdown.
+ *
+ * The toggle lives in the chat toolbar. Without these styles the
+ * .mode-popover renders inline below the chip (each option flows
+ * next to the previous one) because the elements have no
+ * positioning or display set. This block makes the popover a real
+ * dropdown: floating card anchored to the chip, options stacked
+ * vertically, selected option highlighted, and on narrow
+ * viewports the popover constrains itself to the viewport width
+ * with 44px+ touch targets.
+ */
+
+.expand-toggle {
+  position: relative;
+}
+
+.expand-toggle .mode-chip {
+  appearance: none;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--fg-soft);
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  padding: 6px 12px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.expand-toggle .mode-chip:hover {
+  border-color: var(--muted);
+  color: var(--cream);
+}
+
+.expand-toggle .mode-chip[aria-expanded="true"] {
+  border-color: var(--accent);
+  color: var(--cream);
+}
+
+.expand-toggle .mode-chip-label {
+  color: var(--cream);
+  font-weight: 500;
+}
+
+.expand-toggle .caret {
+  color: var(--muted);
+  font-size: 10px;
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+.expand-toggle .mode-chip[aria-expanded="true"] .caret {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+.expand-toggle .mode-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 60;
+  min-width: 240px;
+  max-width: calc(100vw - 32px);
+  background: linear-gradient(180deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: rise 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.expand-toggle .mode-popover button[role="option"] {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--fg-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 44px; /* mobile touch target */
+  transition: background 0.15s;
+  font-family: inherit;
+}
+
+.expand-toggle .mode-popover button[role="option"]:hover {
+  background: rgba(244, 236, 225, 0.05);
+  color: var(--cream);
+}
+
+.expand-toggle .mode-popover button[role="option"]:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.expand-toggle .mode-popover button[role="option"].selected {
+  background: rgba(226, 85, 64, 0.10);
+  color: var(--cream);
+}
+
+.expand-toggle .mode-popover .mode-name {
+  color: var(--cream);
+  font-weight: 500;
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+
+.expand-toggle .mode-popover button[role="option"].selected .mode-name {
+  color: var(--accent-2);
+}
+
+.expand-toggle .mode-popover .mode-desc {
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  line-height: 1.4;
+}
+
+/* Narrow viewports: the chip itself shrinks and the popover widens
+ * to fill the available room so option text wraps cleanly on
+ * phones. 44px touch targets are preserved above. */
+@media (max-width: 600px) {
+  .expand-toggle .mode-popover {
+    min-width: 0;
+    width: max(240px, calc(100vw - 56px));
+  }
+
+  .expand-toggle .mode-popover button[role="option"] {
+    padding: 12px 14px;
+  }
+}
+
 @media (max-width: 960px) {
   /* On mobile, the sidebar becomes a fixed overlay that slides in
      from the left. It's still rendered into <main> but pulled out
