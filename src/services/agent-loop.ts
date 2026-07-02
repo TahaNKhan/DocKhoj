@@ -50,10 +50,14 @@ You have access to four retrieval tools:
   - get_neighbor_chunks(filePath, chunkIndex, range): see what comes before/after a passage
   - get_section_chunks(filePath, headingPath): see the full section a passage came from
   - get_chunk(chunkId): fetch a specific chunk by ID
-  - get_document(filePath): see what a document contains
+  - get_document(filePath): see what a document contains (accepts EITHER the on-disk basename OR the user-facing fileName)
 
-Use them when the initial context isn't enough to answer confidently.
-When you have enough context, respond with the answer and no tool calls.
+Tool argument conventions — these are the most common mistakes:
+  - filePath is the on-disk basename (e.g. "doc-uuid-aaa.pdf"). The source list shows it as file="…". Copy that value verbatim — do NOT pass the user-facing fileName.
+  - chunkId is a UUID. The source list shows it as id="…". Copy that value verbatim — do NOT pass "Source 1" or the source number.
+  - headingPath is an array of strings, in document order, e.g. ["Chapter 2", "Setup"]. Empty array is not a valid headingPath.
+
+Use the tools when the initial context isn't enough to answer confidently. When you have enough context, respond with the answer and no tool calls. Do not emit chain-of-thought or <think>…</think> blocks in your visible output — think internally but write only the final answer.
 
 When you do call a tool, call it with the precise argument shape the tool expects; arguments are JSON-encoded by the platform so send valid JSON.`;
 
@@ -156,10 +160,19 @@ function formatChunksForPrompt(chunks: DocumentChunk[]): string {
   return chunks
     .map(
       (c, i) =>
-        `[Source ${i + 1}] ${c.payload.fileName}${c.payload.pageNumber ? ` (p.${c.payload.pageNumber})` : ''}\n${c.payload.chunk}`
+        // p3-T13: include `file="<on-disk filePath>"` and
+        // `id="<chunkId>"` so the LLM can paste them verbatim into
+        // tool args. Without these the LLM guesses at `filePath`
+        // (passing the user-facing fileName) and at `chunkId`
+        // (passing the source label "Source N"), both of which fail.
+        `[Source ${i + 1}] file="${c.payload.filePath}" id="${c.id}" ${c.payload.fileName}${c.payload.pageNumber ? ` (p.${c.payload.pageNumber})` : ''}\n${c.payload.chunk}`
     )
     .join('\n\n');
 }
+
+// Exported for unit testing — the format is part of the LLM-facing
+// contract (p3-T13) so the test pins it.
+export const __test__ = { formatChunksForPrompt };
 
 function buildHistoryText(history: ChatMessage[]): string {
   return history

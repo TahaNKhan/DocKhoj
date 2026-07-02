@@ -324,6 +324,77 @@ describe('agent-tools — executeAgentTool', () => {
       const out = await executeAgentTool('get_document', { filePath: '.md' }, db);
       expect(out).toEqual(notFound('Document not found'));
     });
+
+    it('falls back to file_name lookup when no fileId matches (p3-T12)', async () => {
+      // p3-T12: the LLM frequently passes the user-facing fileName
+      // (e.g. "CC&Rs.pdf") instead of the on-disk basename
+      // ("<uuid>.pdf"). The tool should resolve either form.
+      new DocumentStore(db).insert({
+        fileId: 'doc-xyz',
+        fileName: 'CC&Rs.pdf',
+        fileType: 'pdf',
+        bytes: 200,
+        uploadedAt: '2026-07-02 09:00:00',
+        chunkCount: 12,
+      });
+
+      const out = await executeAgentTool(
+        'get_document',
+        { filePath: 'CC&Rs.pdf' },
+        db
+      );
+      expect(out.kind).toBe('document');
+      if (out.kind !== 'document') return;
+      expect(out.document?.fileId).toBe('doc-xyz');
+      expect(out.document?.fileName).toBe('CC&Rs.pdf');
+    });
+
+    it('returns NOT_FOUND when neither fileId nor fileName matches', async () => {
+      new DocumentStore(db).insert({
+        fileId: 'doc-xyz',
+        fileName: 'notes.md',
+        fileType: 'md',
+        bytes: 100,
+        uploadedAt: '2026-07-02 09:00:00',
+        chunkCount: 4,
+      });
+      const out = await executeAgentTool(
+        'get_document',
+        { filePath: 'nonexistent.pdf' },
+        db
+      );
+      expect(out).toEqual(notFound('Document not found'));
+    });
+
+    it('picks the most-recent upload when multiple rows share a fileName', async () => {
+      // Two uploads of the same fileName; the tool should pick the
+      // most-recent one (mirrors DocumentStore.list ordering).
+      new DocumentStore(db).insert({
+        fileId: 'doc-older',
+        fileName: 'notes.md',
+        fileType: 'md',
+        bytes: 50,
+        uploadedAt: '2026-07-01 10:00:00',
+        chunkCount: 2,
+      });
+      new DocumentStore(db).insert({
+        fileId: 'doc-newer',
+        fileName: 'notes.md',
+        fileType: 'md',
+        bytes: 60,
+        uploadedAt: '2026-07-02 10:00:00',
+        chunkCount: 3,
+      });
+
+      const out = await executeAgentTool(
+        'get_document',
+        { filePath: 'notes.md' },
+        db
+      );
+      expect(out.kind).toBe('document');
+      if (out.kind !== 'document') return;
+      expect(out.document?.fileId).toBe('doc-newer');
+    });
   });
 });
 

@@ -8,6 +8,7 @@ import {
   fallbackTitle,
 } from '../services/title-generator.js';
 import { chatLog as log } from '../utils/logger.js';
+import { createThinkFilter } from '../utils/think-filter.js';
 import type Database from 'better-sqlite3';
 
 type DB = Database.Database;
@@ -55,57 +56,6 @@ function writeEvent(stream: NodeJS.WritableStream, event: string, data: unknown)
   stream.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 }
 
-// Stateful filter that hides `` chunks from the streamed token output
-// (FR-20). The model emits `` as plain delta.content; we suppress
-// everything between `<think>` and the next `</think>` and emit
-// everything else. If the model splits a tag across two chunks, the
-// filter still recovers as long as the closing `</think>` arrives.
-function createThinkFilter() {
-  let inside = false;
-  let buf = '';
-  return {
-    push(text: string): string | null {
-      buf += text;
-      // Try to extract any user-visible content from the buffer.
-      // When `` is open, hold everything until close.
-      if (!inside && buf.includes('<think>')) {
-        const idx = buf.indexOf('<think>');
-        const before = buf.slice(0, idx);
-        buf = buf.slice(idx);
-        inside = true;
-        return before || null;
-      }
-      if (inside && buf.includes('</think>')) {
-        const idx = buf.indexOf('</think>') + '</think>'.length;
-        buf = buf.slice(idx);
-        inside = false;
-        // After close, anything remaining in buf is visible — return it.
-        const out = buf;
-        buf = '';
-        return out || null;
-      }
-      // No complete tag yet. If we're inside, withhold. Otherwise
-      // flush, but hold a small tail in case the next chunk starts
-      // a tag.
-      if (inside) return null;
-      // Hold back the last 8 chars in case a partial <think> straddles
-      // the chunk boundary.
-      const tail = Math.min(8, buf.length);
-      const out = buf.slice(0, buf.length - tail);
-      buf = buf.slice(buf.length - tail);
-      return out || null;
-    },
-    flush(): string | null {
-      // Stream is closing. Whatever's in the buffer that isn't inside a
-      // think tag is visible — return it.
-      if (inside || !buf) return null;
-      const out = buf;
-      buf = '';
-      return out;
-    },
-  };
-}
-
 // isUsableTitle — guards against the LLM returning its chain-of-thought
 // instead of a title. Reject obvious reasoning-marker outputs (more than
 // 12 words, contains quote-marks, or starts with the model's
@@ -127,10 +77,6 @@ function isUsableTitle(s: string): boolean {
 type DispatchSource =
   | { kind: 'agentic'; stream: AsyncGenerator<unknown> }
   | { kind: 'non-agentic'; stream: AsyncGenerator<StreamEvent> };
-
-function isAgenticEvent(ev: unknown): ev is { type: string; [k: string]: unknown } {
-  return !!ev && typeof ev === 'object' && 'type' in (ev as Record<string, unknown>);
-}
 
 export async function chatStreamRoutes(fastify: FastifyInstance) {
   const db = (fastify as unknown as { db: DB }).db;

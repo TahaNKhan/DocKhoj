@@ -7,12 +7,14 @@
 // FR-33). User bubbles render plain text — we never trust the user's
 // own input to be safe to inject as HTML.
 //
-// Agent-tool chips render when `toolCalls` is provided (p3-T09).
-// Each chip is a ToolCallChip with the tool name + an arguments
-// preview; click to expand to see the arguments and the result.
+// p3-T16 — agent tool use renders as a single collapsed "Tool use"
+// line (ToolUseLine) below the message text. Replaces the per-call
+// chips from p3-T09 (ToolCallChip + ToolResultChip — deleted with
+// this commit; the data shape is unchanged, only the rendering is
+// different).
 
 import { renderMarkdown } from '../services/markdown';
-import { ToolCallChip } from './ToolCallChip';
+import { ToolUseLine } from './ToolUseLine';
 import type { ToolCallRecord } from '../types';
 
 // Source — what a chat bubble's [1] / [2] chip carries. The Bubble
@@ -100,11 +102,7 @@ export function Bubble({
         </div>
       )}
       {role === 'assistant' && toolCalls.length > 0 && (
-        <div class="tools">
-          {toolCalls.map((tc, i) => (
-            <ToolCallChip key={i} toolCall={tc} />
-          ))}
-        </div>
+        <ToolUseLine toolCalls={toolCalls} />
       )}
       {role === 'assistant' && followups.length > 0 && (
         <div class="followups">

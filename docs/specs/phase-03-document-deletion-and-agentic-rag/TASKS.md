@@ -191,6 +191,76 @@ Source of truth for in-flight work. Tasks are ordered by execution sequence. Upd
 
 ---
 
+---
+
+## Phase 3 follow-ups (post-ship UX + streaming fixes)
+
+Reported after Phase 03 was signed off. These are all bug-fixes / UX polish — no spec change required.
+
+### p3-T12 — `get_document` accepts `fileName` OR on-disk `filePath`
+
+- **Description:** The LLM has the user-facing `fileName` in the sources prompt (e.g. `CC&Rs.pdf`) but `get_document` requires the on-disk `filePath` (e.g. `<uuid>.pdf`). The LLM almost always calls `get_document` with `fileName`, the tool strips the extension, looks up a non-existent `fileId`, and returns `NOT_FOUND`. Loosen the tool to accept EITHER form: try the documents table by `file_id` first (existing behavior for `filePath`), then fall back to looking up by `file_name` (new). Update the tool description to make both forms explicit. Test both paths and the "neither" path.
+- **Maps to FR:** FR-30
+- **Maps to design:** §Agent tool execution
+- **Acceptance:**
+  - Unit test: `get_document({filePath: '<fileId>.pdf'})` → returns document (existing behavior).
+  - Unit test: `get_document({fileName: 'CC&Rs.pdf'})` → returns document by file_name lookup.
+  - Unit test: `get_document({filePath: 'nonexistent.pdf'})` → `NOT_FOUND`.
+  - Unit test: `get_document({fileName: 'nonexistent.pdf'})` → `NOT_FOUND`.
+- **Depends on:** p3-T05
+- **Estimate:** S
+- **Status:** done (this commit)
+
+### p3-T13 — Source format exposes `filePath` + `chunkId` so the LLM can target tools
+
+- **Description:** `formatChunksForPrompt` in `services/agent-loop.ts` only emits `[Source N] filename.pdf (p.M) <chunk text>`. The LLM has no way to learn the on-disk `filePath` or any chunk ID, so its `get_document` / `get_chunk` calls guess at the argument. Add the `filePath` (on-disk basename) and `chunkId` to the per-source line so the LLM can paste them straight into the tool args. Format: `[Source 1] file="<filePath>" id="<chunkId>" notes.md (p.12) <chunk>`.
+- **Maps to FR:** FR-30
+- **Maps to design:** §Agent loop (formatChunksForPrompt)
+- **Acceptance:**
+  - Unit test: `formatChunksForPrompt` output for a 2-chunk list contains each chunk's `filePath` and `chunkId` as inline `file="…" id="…"` markers.
+- **Depends on:** —
+- **Estimate:** S
+- **Status:** done (this commit)
+
+### p3-T14 — System prompt clarifies tool argument shape
+
+- **Description:** The LLM is treating `filePath` as the user-facing `fileName` and `chunkId` as the source label. Expand the agent-loop `SYSTEM_PROMPT` with a short "Tool argument conventions" section that explains: (a) `filePath` is the on-disk basename shown in the source list as `file="…"`, (b) `chunkId` is the UUID shown as `id="…"`, (c) the sources list uses `file=…` and `id=…` for those exact values, copy them verbatim. Make the tool descriptions terser in the system prompt and let the schema descriptions do the rest.
+- **Maps to FR:** FR-14
+- **Maps to design:** §Agent loop (SYSTEM_PROMPT)
+- **Acceptance:**
+  - Snapshot test: the SYSTEM_PROMPT string contains both the `file="…"` and `id="…"` markers and an explicit "use the on-disk filePath" instruction.
+- **Depends on:** p3-T13
+- **Estimate:** S
+- **Status:** todo
+
+### p3-T15 — Think filter swallows stray `</think>` without an opener
+
+- **Description:** The stateful `createThinkFilter` in `routes/chat-stream.ts` only strips text between a `<think>` and a matching `</think>`. Some LLM responses (and the agent loop in particular) emit a closing `</think>` with no opener — the current filter doesn't recognize it, so the literal characters `</think>` leak into the streamed text. Fix: when `inside === false` and the buffer contains `</think>` with no `<think>` in the buffer, treat the `</think>` as a tag and skip the chars. Add a unit test.
+- **Maps to FR:** FR-20
+- **Maps to design:** §Stream-with-tools SSE dispatch (think filter)
+- **Acceptance:**
+  - Unit test: filter `push('a</think>b')` returns `'a'`, holding `'b'` (no opener → close tag is consumed).
+  - Unit test: filter `push('<think>x</think>y')` returns `'y'` (existing behavior preserved).
+  - Unit test: filter `push('<think>x')` then `push('y</think>z')` returns `'z'` (multi-push case preserved).
+- **Depends on:** —
+- **Estimate:** S
+- **Status:** done (this commit — extracted `createThinkFilter` to `src/utils/think-filter.ts`, added stray-closer handling, hold-back from the first `<` so split-tag leaks don't happen, and a loop so a single push containing both opener and closer is processed atomically; 12 unit tests pin all branches including split-stray-closer and partial-closer-at-flush)
+
+### p3-T16 — Tool use UI: single collapsible line in the assistant bubble
+
+- **Description:** The current per-call chip rendering (ToolCallChip + ToolResultChip, each its own accordion) has no CSS at all — the chips render with default browser styling and look broken. Replace with a single, minimal "Tool use" line in the assistant bubble, collapsed by default. Collapsed: `🔧 Tool use · N calls · I iterations` with a chevron. Expanded: a flat list of all calls (tool name + args preview + result summary). Delete the per-call ToolCallChip and ToolResultChip components and their tests. Add CSS in `web/src/styles/bubble.css` for the new component.
+- **Maps to FR:** FR-26
+- **Maps to design:** §Tool-call / tool-result chips (replaced with §Tool use line)
+- **Acceptance:**
+  - `Bubble.test.tsx`: with `toolCalls` of 3 records, the bubble shows the collapsed line (`tool-use-line` element, `aria-expanded="false"`, "3 calls" + "1 iteration" text). Click → expanded panel renders 3 rows.
+  - `Bubble.test.tsx`: with no `toolCalls`, no `tool-use-line` element is rendered.
+  - The expanded panel renders each call's name + args preview + result summary (`3 chunks` / `metadata` / `error: <message>`).
+  - All previous `ToolCallChip` / `ToolResultChip` component tests are deleted; the per-call chip components are deleted; coverage thresholds still met.
+  - Visual: collapsed line is a single thin row, not breaking the bubble's visual rhythm. Expanded panel is contained within the bubble.
+- **Depends on:** —
+- **Estimate:** M
+- **Status:** done (this commit — new `ToolUseLine` component replaces `ToolCallChip` + `ToolResultChip`; collapsed chip "🔧 Tool use · N calls · M iterations"; expanded panel renders one row per call with name + args preview + result summary + truncated badge; per-call CSS lives in `bubble.css` next to the bubble styles; 16 component tests pin both states)
+
 ## Notes / blockers
 
 _(none yet)_

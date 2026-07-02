@@ -4,6 +4,7 @@ import { migrate } from '../../src/db/migrate.js';
 import {
   streamAgentChat,
   isToolsNotSupportedError,
+  __test__,
   type AgentLoopDeps,
 } from '../../src/services/agent-loop.js';
 import type { AgentToolResult, ToolChunk } from '../../src/services/agent-tools.js';
@@ -676,5 +677,78 @@ describe('isToolsNotSupportedError', () => {
   it('handles non-Error throws', () => {
     expect(isToolsNotSupportedError('tools not supported')).toBe(true);
     expect(isToolsNotSupportedError({ message: 'tools not supported' })).toBe(true);
+  });
+});
+
+// p3-T14 — the system prompt must explicitly tell the LLM about
+// the filePath/chunkId conventions so it doesn't guess wrong.
+describe('SYSTEM_PROMPT (p3-T14)', () => {
+  it('mentions file="…" and id="…" conventions', () => {
+    // We don't import the constant (it's module-internal). Read the
+    // file and grep for the required phrases.
+    const fs = require('node:fs') as typeof import('node:fs');
+    const src = fs.readFileSync(
+      new URL('../../src/services/agent-loop.ts', import.meta.url),
+      'utf8'
+    );
+    expect(src).toContain('SYSTEM_PROMPT');
+    expect(src).toContain('file="…"');
+    expect(src).toContain('id="…"');
+    expect(src).toContain('on-disk basename');
+    // Either form accepted
+    expect(src).toContain('OR the user-facing fileName');
+  });
+});
+
+// p3-T13 — the source list the LLM sees in the system prompt must
+// expose the on-disk filePath and the chunk ID so the LLM can paste
+// them verbatim into tool args.
+describe('formatChunksForPrompt (p3-T13)', () => {
+  const fmt = __test__.formatChunksForPrompt;
+
+  it('includes file="<on-disk filePath>" and id="<chunkId>" per source', () => {
+    const chunks = [
+      {
+        id: 'uuid-aaa',
+        vector: [],
+        score: 0.9,
+        payload: {
+          chunk: 'first chunk body',
+          fileName: 'CC&Rs.pdf',
+          filePath: 'doc-uuid-aaa.pdf',
+          fileType: 'pdf',
+          chunkIndex: 0,
+          totalChunks: 2,
+        },
+      },
+      {
+        id: 'uuid-bbb',
+        vector: [],
+        score: 0.7,
+        payload: {
+          chunk: 'second chunk body',
+          fileName: 'CC&Rs.pdf',
+          filePath: 'doc-uuid-bbb.pdf',
+          fileType: 'pdf',
+          chunkIndex: 1,
+          totalChunks: 2,
+          pageNumber: 31,
+        },
+      },
+    ] as unknown as Parameters<typeof fmt>[0];
+    const out = fmt(chunks);
+    expect(out).toContain('file="doc-uuid-aaa.pdf"');
+    expect(out).toContain('id="uuid-aaa"');
+    expect(out).toContain('file="doc-uuid-bbb.pdf"');
+    expect(out).toContain('id="uuid-bbb"');
+    // Source titles preserved.
+    expect(out).toContain('[Source 1]');
+    expect(out).toContain('[Source 2]');
+    // Page annotation still rendered.
+    expect(out).toContain('(p.31)');
+  });
+
+  it('returns a placeholder when no chunks match', () => {
+    expect(fmt([])).toMatch(/no matching documents/);
   });
 });

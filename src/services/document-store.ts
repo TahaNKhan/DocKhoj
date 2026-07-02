@@ -91,6 +91,24 @@ export class DocumentStore {
     return row ? toDocumentRow(row) : null;
   }
 
+  /** Look up a row by its user-facing fileName (e.g. "notes.md").
+   *  Used by the agent tool `get_document` as a fallback when the
+   *  LLM passes the fileName it saw in the source list instead of
+   *  the on-disk basename. If multiple uploads share the same
+   *  fileName, returns the most-recently-uploaded one. Returns null
+   *  when no row matches. */
+  getByFileName(fileName: string): DocumentRow | null {
+    const row = this.db
+      .prepare(
+        `SELECT file_id, file_name, file_type, bytes, uploaded_at, chunk_count
+         FROM documents WHERE file_name = ?
+         ORDER BY uploaded_at DESC, file_id DESC
+         LIMIT 1`
+      )
+      .get(fileName) as DocumentDbRow | undefined;
+    return row ? toDocumentRow(row) : null;
+  }
+
   /** Remove a row by fileId. Idempotent — returns `true` if a row
    *  was deleted, `false` if no such row existed. */
   delete(fileId: string): boolean {

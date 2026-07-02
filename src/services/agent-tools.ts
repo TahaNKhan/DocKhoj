@@ -162,14 +162,33 @@ async function getChunkById(chunkId: string): Promise<AgentToolResult> {
   }
 }
 
-async function getDocument(filePath: string, db: DB): Promise<AgentToolResult> {
-  // The LLM sees filePath as the on-disk basename (fileId + ext).
-  // Strip the trailing extension to recover the fileId.
+async function getDocument(
+  // p3-T12: accept EITHER the on-disk `filePath` (= `${fileId}${ext}`)
+  // or the user-facing `fileName`. The LLM frequently passes the
+  // fileName it saw in the source list. We try the filePath (existing
+  // behavior) first, then fall back to a file_name lookup so the
+  // common case "the LLM saw 'CC&Rs.pdf' and called us with that"
+  // actually returns the document instead of NOT_FOUND.
+  filePath: string,
+  db: DB
+): Promise<AgentToolResult> {
+  if (!filePath) return notFound('Document not found');
+  const store = new DocumentStore(db);
+
+  // 1. filePath → strip extension → fileId lookup.
   const fileId = filePath.replace(/\.[^.]+$/, '');
-  if (!fileId) return notFound('Document not found');
-  const doc = new DocumentStore(db).get(fileId);
-  if (!doc) return notFound('Document not found');
-  return { kind: 'document', document: doc };
+  if (fileId) {
+    const byId = store.get(fileId);
+    if (byId) return { kind: 'document', document: byId };
+  }
+
+  // 2. Fallback: fileName lookup (treats the same string as a
+  // user-facing fileName). If multiple uploads share a name, the
+  // most-recent wins.
+  const byName = store.getByFileName(filePath);
+  if (byName) return { kind: 'document', document: byName };
+
+  return notFound('Document not found');
 }
 
 /**
@@ -313,15 +332,20 @@ export const AGENT_TOOLS: ChatCompletionTool[] = [
     function: {
       name: 'get_document',
       description:
-        'Fetch metadata for a document by its internal filePath. ' +
-        'Use to discover what a document contains without re-running a search.',
+        'Fetch metadata for a document. Accepts EITHER the on-disk ' +
+        'basename (filePath, shown as `file="…"` in the source list) ' +
+        'OR the user-facing filename (fileName, shown next to the source ' +
+        'title). Use to discover what a document contains without ' +
+        're-running a search.',
       parameters: {
         type: 'object',
         additionalProperties: false,
         properties: {
           filePath: {
             type: 'string',
-            description: 'Internal filePath (on-disk basename) of the document.',
+            description:
+              'On-disk basename (shown as `file="…"` in the source list) ' +
+              'OR the user-facing fileName. Either is accepted.',
           },
         },
         required: ['filePath'],

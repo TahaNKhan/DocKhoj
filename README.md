@@ -380,16 +380,14 @@ src/
 web/
   src/
     components/          Bubble, Composer, DocumentsList, Dropzone, QueueRow,
-                         Sidebar, SourceDrawer, TopBar, ToolCallChip,
-                         ToolResultChip
+                         Sidebar, SourceDrawer, TopBar, ToolUseLine
     routes/              Chat.tsx (expand-mode toggle), Upload.tsx
     services/            documents.ts, sessions.ts, status.ts, stream.ts,
                          markdown.ts, upload.ts
     styles/              tokens.css, base.css, animations.css, bubble.css, ...
     types.d.ts           SPA-side type mirrors (ToolCallRecord)
   tests/                 vitest (happy-dom) — Bubble, Chat (expand-mode),
-                         DocumentsList, Sidebar, SourceDrawer, ToolCallChip,
-                         ToolResultChip, services (markdown, sessions, status,
+                         DocumentsList, Sidebar, SourceDrawer, services (markdown, sessions, status,
                          stream, upload)
 
 tests/
