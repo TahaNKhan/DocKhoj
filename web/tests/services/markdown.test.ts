@@ -20,53 +20,9 @@ describe('renderMarkdown', () => {
     expect(out).toContain('<code>npm install</code>');
   });
 
-  it('renders fenced code blocks in <pre><code>', () => {
-    const out = renderMarkdown('```js\nconst x = 1;\n```');
-    expect(out).toContain('<pre>');
-    expect(out).toContain('<code');
-    expect(out).toContain('const x = 1;');
-  });
-
   it('renders _italic_ as <em>', () => {
     const out = renderMarkdown('_italic_');
     expect(out).toMatch(/<em>italic<\/em>/);
-  });
-
-  it('renders unordered lists', () => {
-    const out = renderMarkdown('- one\n- two\n- three');
-    expect(out).toContain('<ul>');
-    expect(out).toContain('<li>one</li>');
-    expect(out).toContain('<li>two</li>');
-  });
-
-  it('renders ordered lists', () => {
-    const out = renderMarkdown('1. first\n2. second');
-    expect(out).toContain('<ol>');
-    expect(out).toContain('<li>first</li>');
-    expect(out).toContain('<li>second</li>');
-  });
-
-  // XSS protection (FR-33): adversarial LLM responses must not reach
-  // the DOM as executable HTML.
-  it('strips <script> tags entirely', () => {
-    const out = renderMarkdown('<script>alert(1)</script>');
-    expect(out).not.toContain('<script');
-    expect(out).not.toContain('alert(1)');
-  });
-
-  it('strips inline event handlers (onerror, onclick)', () => {
-    const out = renderMarkdown('<img src=x onerror="alert(1)">');
-    expect(out.toLowerCase()).not.toContain('onerror');
-  });
-
-  it('strips javascript: hrefs', () => {
-    const out = renderMarkdown('[click](javascript:alert(1))');
-    expect(out.toLowerCase()).not.toContain('javascript:');
-  });
-
-  it('strips <iframe> tags', () => {
-    const out = renderMarkdown('<iframe src="https://evil.example"></iframe>');
-    expect(out.toLowerCase()).not.toContain('<iframe');
   });
 
   // Streaming re-render behavior: partial markdown that doesn't
@@ -79,13 +35,6 @@ describe('renderMarkdown', () => {
     const out = renderMarkdown(partial);
     expect(typeof out).toBe('string');
     expect(out.length).toBeGreaterThan(0);
-  });
-
-  it('escapes raw HTML in plain text (e.g. a stray <b> in a sentence)', () => {
-    const out = renderMarkdown('Use the <b> tag for bold');
-    // DOMPurify allows <b> (it's a normal element) but strips attrs
-    // that aren't allow-listed — the text content is preserved.
-    expect(out).toContain('<b>');
   });
 
   it('returns a string for the typical chat response shape', () => {

@@ -8,16 +8,15 @@ flowchart LR
     UI[Preact SPA<br/>web/dist]
     UI -->|fetch JSON| API[API client<br/>services/api.ts]
     UI -->|fetch+ReadableStream| SSE[SSE client<br/>services/stream.ts]
+    UI -->|XHR upload| UploadSvc[services/upload.ts]
   end
 
   subgraph Server (single Fastify process)
     SPA[server/spa.ts<br/>static + fallback]
     Routes[/ routes /]
     API -->|GET /api/sessions| Sessions[services/conversations.ts]
-    API -->|POST /api/upload| Upload[routes/upload.ts]
+    UploadSvc -->|POST /api/upload| Upload[routes/upload.ts]
     SSE -->|POST /api/chat/stream| ChatStream[services/stream-chat.ts]
-    SSE -->|GET /api/upload/progress| UploadBus[EventEmitter]
-    Upload -->|publish| UploadBus
     ChatStream -->|persist| Sessions
     ChatStream -->|embed| Embed[services/embed.ts]
     ChatStream -->|retrieve| Qdrant[services/qdrant.ts]
@@ -35,7 +34,7 @@ Three new surfaces:
 
 1. **SPA shell** — Vite-built Preact bundle served as static from Fastify. SPA fallback for non-API GETs.
 2. **SQLite store** — single-file DB on a Docker volume. Persists conversations and messages.
-3. **SSE channels** — `/api/chat/stream` and `/api/upload/progress`. Server-to-client only; uses the `fetch` + `ReadableStream` pattern on the browser (POST with a body, which native `EventSource` doesn't support).
+3. **SSE channel** — `/api/chat/stream` for token-by-token chat. Server-to-client only; uses the `fetch` + `ReadableStream` pattern on the browser (POST with a body, which native `EventSource` doesn't support). Upload progress is **not** SSE — see "Upload progress" below.
 
 Routing discipline: **API under `/api/*`, pages under `/{page}`.** Fastify's static plugin handles literal file lookups first; the SPA fallback handler returns `index.html` for any non-`/api/*` GET that didn't match a static file; `/api/*` returns JSON 404 on unknown paths. The two namespaces can never collide.
 
@@ -75,8 +74,7 @@ repo/
       api-sessions.ts                      # /api/sessions, /api/sessions/:id, /api/sessions/:id/messages
       chat.ts                              # /api/chat (non-stream) + /api/chat/stream (SSE)
       search.ts                            # /api/search, /api/search/rag
-      upload.ts                            # /api/upload (existing, publishes to uploadBus)
-      upload-progress.ts                   # /api/upload/progress (SSE)
+      upload.ts                            # /api/upload (existing)
       download.ts                          # /api/download/:filename
       api-status.ts                        # /api/status → {chunks, ollamaAvailable}
       api-health.ts                        # /api/health (moved from /health)
@@ -131,7 +129,6 @@ repo/
     routes/
       api-sessions.test.ts                 # NEW
       chat-stream.test.ts                  # NEW — fastify.inject + simulated disconnect
-      upload-progress.test.ts              # NEW
       api-health.test.ts                   # NEW
       spa-fallback.test.ts                 # NEW — page routes 200, /api/* 404 JSON
     components/                            # NEW (under web/, scanned by vitest workspaces)
@@ -305,7 +302,6 @@ All paths under `/api/*`. All UI paths under `/{page}`. The SPA fallback serves 
 | `/api/chat` | `POST` | Non-streaming chat | Body: `{q, sessionId?, limit?, expand?}` — kept for back-compat / scripts. |
 | `/api/chat/stream` | `POST` | SSE chat | Body: `{q, sessionId?, limit?, expand?}` (FR-17). |
 | `/api/upload` | `POST` | Upload | Unchanged from Phase 01. |
-| `/api/upload/progress` | `GET` | SSE upload progress | `event: file` / `event: idle` (FR-26). |
 | `/api/search` | `GET` | Raw search | Unchanged from Phase 01. |
 | `/api/search/rag` | `GET` | RAG search | Unchanged from Phase 01. |
 | `/api/download/:filename` | `GET` | Download | Path-traversal guard from Phase 01 (FR-26 of Phase 01). |
@@ -681,45 +677,18 @@ export async function mountSpa(fastify: FastifyInstance, webDistPath: string) {
 
 The order is important: the static plugin is registered first (handles literal files), then `setNotFoundHandler` is the catch-all. The `startsWith('/api/')` check ensures API 404s return JSON, not HTML.
 
-### Upload progress event bus
+### Upload progress
 
-```ts
-// src/routes/upload.ts (existing; adds publish)
-import { EventEmitter } from 'node:events';
+Upload progress uses **two native browser primitives, no SSE**:
 
-export const uploadBus = new EventEmitter();
+- **Transport progress** (file bytes flowing to the server) — reported by `XMLHttpRequest.upload.onprogress` natively in the browser. The SPA's queue row reads `loaded / total` and shows 0..100%.
+- **Server-side status** (parse + embed + index complete) — returned in the same POST `/api/upload` response. The route blocks until done and returns `{ success, fileName, chunksIndexed, fileId }` on success or `500 { error }` on failure.
 
-fastify.post('/api/upload', async (request, reply) => {
-  // ... existing pipeline ...
-  uploadBus.emit('file', { fileName, status: 'queued', progress: 0 });
-  // ... after each chunk embedded:
-  uploadBus.emit('file', { fileName, status: 'embedding', progress: pct });
-  // ... after all chunks upserted:
-  uploadBus.emit('file', { fileName, status: 'ready', progress: 100, chunksIndexed });
-});
-
-// src/routes/upload-progress.ts
-fastify.get('/api/upload/progress', async (request, reply) => {
-  reply.raw.setHeader('Content-Type', 'text/event-stream');
-  reply.raw.setHeader('Cache-Control', 'no-cache');
-  reply.raw.setHeader('Connection', 'keep-alive');
-  reply.raw.flushHeaders();
-
-  const send = (event: string, data: unknown) =>
-    reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-
-  const onFile = (data: unknown) => send('file', data);
-  uploadBus.on('file', onFile);
-  send('idle', {}); // initial state
-
-  reply.raw.on('close', () => uploadBus.off('file', onFile));
-});
-```
+This replaces an earlier design that proposed a process-wide `EventEmitter` + `GET /api/upload/progress` SSE channel. That design was over-engineered for a single-user self-hosted app where uploads are infrequent: it required every tab to maintain a long-lived SSE connection, added race-on-subscribe semantics (a fresh subscriber could miss events that fired before it attached), and a server-side state machine to keep coherent across connections. The simpler primitive — `XHR.upload.onprogress` + the POST response — gives the same observable UX (a queue row that goes from `uploading` to `indexing` to `done`/`failed`) with none of that complexity.
 
 ## State management
 
 - **SQLite** is the source of truth for `conversations` and `messages`. WAL mode allows the upload progress handler to read while an upload is writing.
-- **In-process `EventEmitter` for upload progress.** No need for Redis / external pub-sub at single-instance scale.
 - **Browser:** URL hash (`#session=<id>`) is the canonical pointer to the current session. `localStorage` (key `dockhoj.sessionId`) is a fallback for reload-without-hash. Sessions are listed from `GET /api/sessions` on app mount.
 - **No client-side state store** (no Redux, no Zustand). Component-local state and `useState`/`useEffect` are enough for this surface.
 
@@ -744,7 +713,7 @@ fastify.get('/api/upload/progress', async (request, reply) => {
 
 - **Server unit:** `ConversationStore` CRUD with a real `better-sqlite3` `:memory:` DB. `migrate()` applies `001_init.sql` and is idempotent.
 - **Server route (SSE):** `fastify.inject` with a stubbed `openai.chat.completions.create({ stream: true })` returning a fake async iterator. Assert the SSE event sequence: `meta, sources, token*N, done`. Disconnect simulation: close the request mid-stream, assert `AbortController.abort()` was called.
-- **Server route (upload progress):** subscribe to `/api/upload/progress`, fire a `POST /api/upload`, assert `event: file` events arrive with the right statuses.
+- **Server route (upload):** `fastify.inject` a multipart upload, assert 200 with `{ success, chunksIndexed }`. **No SSE route to test** — progress is observed client-side via `XHR.upload.onprogress` and the POST response.
 - **Server route (SPA fallback):** `fastify.inject({ method: 'GET', url: '/chat' })` returns 200 with `Content-Type: text/html`; `GET /api/does-not-exist` returns 404 with `Content-Type: application/json`.
 - **Client component:** `@testing-library/preact` + `happy-dom`. Render `<Composer />`, fire `keydown` events, assert callbacks. Render `<Sidebar />` with mocked session list, assert clicks invoke the right handler. Render `<Bubble />` and assert streamed tokens append to `innerText`.
 - **Client SSE:** `stream.ts` is exercised by component tests; the parser is unit-tested with hand-crafted SSE chunks (single event, multiple events, malformed line).
@@ -848,14 +817,14 @@ Roughly one task per logical commit. Each task sized to be reviewable, runs the 
 5. **T26** — Add `src/db/`, `001_init.sql`, `migrate.ts`. Wire `migrate()` into `index.ts` startup before `initCollection()`.
 6. **T27** — Implement `services/conversations.ts` (CRUD + message append + `setGeneratedTitle` respecting FR-15b + listMessages). Unit tests against `:memory:` DB.
 7. **T28** — Add `routes/api-sessions.ts` (POST/GET/PATCH/DELETE + `:id/messages`). Route tests via `fastify.inject`.
-8. **T29** — **Path migration cut:** move every existing API endpoint from its old path to `/api/*`. Update `routes/chat.ts`, `routes/search.ts`, `routes/upload.ts`, `routes/download.ts`, add `routes/api-health.ts` for `/api/health`. Update `routes/upload.ts` to publish to `uploadBus`. Update all callers (existing tests, README) to use the new paths.
+8. **T29** — **Path migration cut:** move every existing API endpoint from its old path to `/api/*`. Update `routes/chat.ts`, `routes/search.ts`, `routes/upload.ts`, `routes/download.ts`, add `routes/api-health.ts` for `/api/health`. Update all callers (existing tests, README) to use the new paths.
 9. **T30** — Wire SPA to `/api/sessions`: `web/src/services/sessions.ts` (typed fetch), `Sidebar.tsx` (real list), click-to-switch.
 10. **T31** — Add `streamChatCompletionRaw` to `services/openai-api-wrapper.ts` (additive). Create `services/title-generator.ts` (`generateConversationTitle` + `fallbackTitle`).
 11. **T32** — Add `services/stream-chat.ts` orchestrating: embed → search → prompt → stream → emit SSE. Stub-friendly.
 12. **T33** — Add `routes/chat.ts` `POST /api/chat/stream` SSE handler with post-`done` `event: title` emission. Update `POST /api/chat` (non-stream) to include a `title` field via concurrent LLM call. Client SSE parser handles the new `title` event. Route tests assert event sequence including the title event.
 13. **T34** — Client SSE: `web/src/services/stream.ts`. `Bubble.tsx` renders streamed tokens live. `Composer.tsx` sends via `openChatStream`. Test SSE parser.
 14. **T35** — Add `routes/api-status.ts` (`GET /api/status` → `{chunks, ollamaAvailable}`). `TopBar.tsx` reads it on mount.
-15. **T36** — Add upload progress event bus: `uploadBus` in `routes/upload.ts`. Subscribe in new `/api/upload/progress` SSE handler (`routes/upload-progress.ts`). Route test.
+15. **T36** — Wire `web/src/services/upload.ts` using XHR `upload.onprogress` for transport progress + the POST response for final status (no SSE).
 16. **T37** — Wire `QueueRow.tsx` to live `/api/upload/progress` updates. `Dropzone.tsx` calls `POST /api/upload` and the row's progress/state updates from the SSE stream.
 17. **T38** — Add `SourceDrawer.tsx` (inline drawer) and `Bubble.tsx` source-chip click handler.
 18. **T39** — Add `server/spa.ts` (mount `web/dist/` + SPA fallback). Update `Dockerfile` to run `npm run build:web` and update `HEALTHCHECK` to `/api/health`. Update `docker-compose.yml` with `conversations_data` volume.

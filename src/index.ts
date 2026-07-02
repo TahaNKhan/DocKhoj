@@ -120,10 +120,10 @@ async function shutdown(server: Awaited<ReturnType<typeof buildApp>>, signal: st
 
 async function start() {
   try {
-    // SQLite migrations first — sessions routes (T28) and the upload
-    // progress bus (T35) both need the schema. Run before initCollection
-    // so a fresh volume doesn't end up with a Qdrant collection pointing
-    // at a SQLite that hasn't been migrated.
+    // SQLite migrations first — sessions routes (T28) and any future
+    // schema-dependent routes both need the schema applied. Run before
+    // initCollection so a fresh volume doesn't end up with a Qdrant
+    // collection pointing at a SQLite that hasn't been migrated.
     const db = openDb();
     const result = migrate(db);
     log.info({ applied: result.applied, total: result.total }, 'Migrations done');

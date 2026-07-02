@@ -148,23 +148,27 @@ Spec: [`docs/specs/phase-02-frontend-streaming-and-persistence/`](./docs/specs/p
 - **Estimate:** S
 - **Status:** done
 
-## T35 — Upload progress event bus + SSE route
+## T35 — Upload progress via XHR (no SSE)
 
-- **Description:** Add `uploadBus = new EventEmitter()` in `routes/upload.ts`. Publish `queued → embedding → ready` events with fileName, progress, status. Add `routes/upload-progress.ts`: `GET /api/upload/progress` SSE handler subscribes to `uploadBus` and emits `event: file` / `event: idle`.
+- **Description:** Adopt the simpler primitive for upload progress: `XMLHttpRequest.upload.onprogress` reports transport progress (bytes flowing to the server) natively in the browser; the final `success` / `failed` status comes back in the same POST `/api/upload` response. No server-side `EventEmitter`, no `GET /api/upload/progress` SSE channel, no race-on-subscribe semantics. The earlier T35 SSE design was over-engineered for a single-user self-hosted app where uploads are infrequent (see `design.md` §Upload progress for the rationale). This task is folded into **T36** below; the T35 line is kept only as a historical marker.
 - **Maps to FR:** FR-25, FR-26, FR-27
-- **Maps to design:** §Key algorithms > Upload progress event bus
-- **Acceptance:** Route test: subscribe → fire `POST /api/upload` → assert `event: file` events arrive in order. After upload completes, a fresh subscriber sees `event: idle` immediately.
-- **Depends on:** T29
-- **Estimate:** M
-- **Status:** todo
+- **Maps to design:** §Key algorithms > Upload progress
+- **Acceptance:** Documented in T36.
+- **Depends on:** —
+- **Estimate:** —
+- **Status:** done
 
 ## T36 — Wire upload UI to live progress
 
-- **Description:** Update `Dropzone.tsx` to call `POST /api/upload` (bounded parallel ≤4) and open an EventSource on `/api/upload/progress`. `QueueRow.tsx` reads per-file progress from the SSE stream and updates progress bar, percentage, status text. Remove button cancels in-flight (close EventSource, abort fetch).
+- **Description:** Add `web/src/services/upload.ts` with `uploadFile(file, onProgress?, signal?)`: wraps XHR (rather than `fetch`) so we get `upload.onprogress` for transport progress while still supporting `AbortSignal` for cancel. The returned promise resolves to `{ success, fileName, chunksIndexed, fileId }` on 200 or rejects with `error` on failure. Update `Upload.tsx` to:
+  - On file drop, add a queue row in `status: 'uploading'`, `progress: 0`.
+  - `uploadFile` concurrently (bounded ≤4). Wire `onProgress` to update the row's `progress` (0..100).
+  - When the XHR reaches 100%, transition the row to `status: 'indexing'`, indeterminate. When the POST resolves, set `status: 'ready'` with `chunksIndexed`, or `status: 'failed'` with the error message.
+  - "×" button on each row calls `signal.abort()` and removes the row.
 - **Maps to FR:** FR-25, FR-26, FR-27, FR-40, FR-41, FR-42, FR-44
-- **Maps to design:** §Module layout
-- **Acceptance:** Drop 10 files, see all 10 in queue, progress bars animate independently, status transitions queued → embedding → ready. Component test asserts QueueRow renders progress states.
-- **Depends on:** T35, T25
+- **Maps to design:** §Module layout, §Key algorithms > Upload progress
+- **Acceptance:** Drop 1 small file → row appears, progress bar fills 0→100, row transitions to `ready` with the server's `chunksIndexed`. Drop a non-existent / corrupt file → row ends `failed` with the server's error message. Mock XHR test asserts `upload.onprogress` ticks drive the row's progress field and the POST response drives the final state. Existing `POST /api/upload` integration test still passes.
+- **Depends on:** T25
 - **Estimate:** M
 - **Status:** todo
 
