@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { llmLog as log } from '../utils/logger.js';
+import { ChatCompletionCreateParamsNonStreaming } from 'openai/resources';
 
 // LLM-driven async conversation title generator (FR-14, FR-15, FR-15a).
 //
@@ -57,8 +58,11 @@ export async function generateConversationTitle(
       // to emit chain-of-thought before (or instead of) the title.
       max_tokens: 20,
       temperature: 0.3,
-      reasoning_effort: 'none' as any
-    },
+      stream: false,
+      thinking: {
+        type: 'disabled' 
+      }
+    } as ChatCompletionCreateParamsNonStreaming,
     signal ? { signal } : undefined
   );
   const raw = response.choices?.[0]?.message?.content?.trim() ?? '';
