@@ -30,7 +30,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - `sqlite3 conversations.db "SELECT file_id, owner_id, visibility FROM documents LIMIT 5;"` returns rows with `owner_id = NULL, visibility = 'public'` for any pre-existing data.
 - **Dependencies.** T1.
 - **Estimate.** S.
-- **Status.** todo.
+- **Status.** done.
 
 ## T3. Qdrant payload backfill + new payload indexes
 
