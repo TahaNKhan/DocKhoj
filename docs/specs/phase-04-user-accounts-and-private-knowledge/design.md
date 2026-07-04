@@ -32,7 +32,7 @@ flowchart TB
     end
 
     subgraph Persistence[Storage]
-        SQL[(SQLite<br/>users, auth_sessions,<br/>invites, documents,<br/>chat_sessions, messages)]
+        SQL[(SQLite<br/>users, auth_sessions,<br/>invites, documents,<br/>conversations, messages)]
         QDR[(Qdrant<br/>ownerId + visibility<br/>payload fields)]
         FS[(On-disk files)]
     end
@@ -145,7 +145,7 @@ tests/
 | `created_at`     | TEXT NOT NULL DEFAULT (datetime('now')) |                                                                  |
 | `last_login_at`  | TEXT   | Nullable until first login.                                           |
 
-**`auth_sessions`** (distinct from `chat_sessions` — the existing `sessions` table is renamed conceptually to `chat_sessions` in this phase's docs, but the physical table name stays `sessions` to keep the migration delta small)
+**`auth_sessions`** — server-side HTTP auth sessions, distinct from the existing `conversations` table which holds chat-session rows. New physical table; does not shadow anything.
 
 | Column        | Type   | Notes                                                       |
 | ------------- | ------ | ----------------------------------------------------------- |
@@ -182,7 +182,7 @@ Adds two columns:
 
 Index: `idx_documents_owner` on `(owner_id)`. Legacy rows get `owner_id = NULL, visibility = 'public'`.
 
-**`sessions` (chat sessions, after migration 006)**
+**`conversations` (chat sessions, after migration 007)**
 
 Adds one column:
 
@@ -190,7 +190,7 @@ Adds one column:
 | ---------- | ------ | --------------------------------------------------------------------- |
 | `owner_id` | TEXT   | FK → `users.id` ON DELETE CASCADE. Nullable until first post-Phase-04 chat. |
 
-Migration 006 also `DELETE FROM sessions;` — cascades to `messages` via the existing FK.
+Migration 007 also `DELETE FROM conversations;` — cascades to `messages` via the existing FK (`messages.conversation_id → conversations.id ON DELETE CASCADE`).
 
 ### Qdrant payload
 
@@ -211,13 +211,13 @@ erDiagram
     users ||--o{ invites_created : "creates"
     users ||--o{ invites_used : "uses"
     users ||--o{ documents : "owns"
-    users ||--o{ chat_sessions : "owns"
+    users ||--o{ conversations : "owns"
     auth_sessions }o--|| users : "belongs to"
     invites }o--|| users : "created_by"
     invites }o--|| users : "used_by"
     documents }o--|| users : "owner_id (nullable)"
-    chat_sessions }o--|| users : "owner_id"
-    chat_sessions ||--o{ messages : "contains"
+    conversations }o--|| users : "owner_id"
+    conversations ||--o{ messages : "contains"
 ```
 
 ## API surface
@@ -516,7 +516,7 @@ Per the project CLAUDE.md, `./restart.sh` is the integration harness — it rebu
 Each step is a single commit, testable in isolation:
 
 1. **`p4-T01`** — Branch + worktree. Create the spec folder (already done as part of this spec).
-2. **`p4-T02`** — Migrations `005_users.sql` (users + auth_sessions + invites) + `005_documents_owner.sql` (documents columns). Verify with the migration runner on a fresh volume.
+2. **`p4-T02`** — Migrations `005_users.sql` (users + auth_sessions + invites) + `006_documents_owner.sql` (documents columns). Verify with the migration runner on a fresh volume.
 3. **`p4-T03`** — Qdrant payload backfill helper. One-shot script that scans all points and `set_payload`s `ownerId = null, visibility = 'public'`. Run during server startup (idempotent — checks for existing fields first).
 4. **`p4-T04`** — `password.ts` + `UserStore` + `AuthSessionStore` + `InviteStore`. Vitest unit tests.
 5. **`p4-T05`** — `auth.ts` Fastify plugin (the onRequest hook + `request.user` decorator). Mount in `index.ts` BEFORE all other route plugins.
@@ -528,7 +528,7 @@ Each step is a single commit, testable in isolation:
 11. **`p4-T11`** — Update `/api/search`, `/api/search/rag`, `/api/chat`, `/api/chat/stream` to thread `viewerId` through to Qdrant calls (including expand-hits and the agent tool's fetch helpers).
 12. **`p4-T12`** — Update agent tools (`get_neighbor_chunks`, `get_section_chunks`, `get_chunk`, `get_document`) to apply the visibility filter.
 13. **`p4-T13`** — Cross-user retrieval test (`qdrant-visibility.test.ts` + the curl walkthrough from §Testing strategy).
-14. **`p4-T14`** — Migration `006_chat_sessions_owner.sql` + delete legacy rows. Update `ConversationStore` to read/write `owner_id`. Update all `/api/sessions*` routes for ownership scoping.
+14. **`p4-T14`** — Migration `007_chat_sessions_owner.sql` + delete legacy rows. Update `ConversationStore` to read/write `owner_id`. Update all `/api/sessions*` routes for ownership scoping.
 15. **`p4-T15`** — `GET /api/status` requires auth + returns user-scoped counts.
 16. **`p4-T16`** — SPA: `useAuth` hook + `auth.ts` service + `Login.tsx` + `Register.tsx` + `InviteAccept.tsx` + `RouteGuard.tsx`.
 17. **`p4-T17`** — SPA: `UserMenu` (top bar) + logout wiring. `App.tsx` route guard wiring for `/chat`, `/upload`, `/admin/*`.
