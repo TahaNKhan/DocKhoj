@@ -14,7 +14,7 @@ import { statusRoutes } from './routes/api-status.js';
 import { documentRoutes } from './routes/api-documents.js';
 import { authRoutes } from './routes/api-auth.js';
 import { adminRoutes } from './routes/api-admin.js';
-import { initCollection, migratePayloads } from './services/qdrant.js';
+import { initCollection, migratePayloads, migrateSearchTextPayloads } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
 import { migrate } from './db/migrate.js';
@@ -159,6 +159,15 @@ async function start() {
     // initCollection so the indexes + metadata collection exist.
     const migration = await migratePayloads();
     log.info(migration, 'Qdrant payload migration result');
+
+    // Phase 05 / p5-T01 / FR-3 — backfill the searchText payload on
+    // every chunk so the lexical prefetch in searchChunks has
+    // something to filter on. Runs AFTER migratePayloads so legacy
+    // chunks already carry ownerId/visibility — keeps the lexical
+    // prefetch's visibility filter consistent. Idempotent; gated
+    // by its own app_metadata flag.
+    const searchTextMigration = await migrateSearchTextPayloads();
+    log.info(searchTextMigration, 'Qdrant searchText migration result');
 
     const ollamaReady = await isOllamaAvailable();
     log.info({ ollamaReady }, 'Ollama reachability');

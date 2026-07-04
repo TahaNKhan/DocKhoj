@@ -13,6 +13,10 @@ const VECTOR_SIZE = parseInt(process.env.VECTOR_SIZE || '768', 10);
 const METADATA_COLLECTION = process.env.QDRANT_METADATA_COLLECTION || 'app_metadata';
 const METADATA_VECTOR_SIZE = 1;
 const MIGRATION_FLAG_KEY = 'phase_04_qdrant_migration_applied';
+// Phase 05 / p5-T01 — sibling flag for the searchText backfill. Same
+// gating shape as MIGRATION_FLAG_KEY; each flag gets its own stable
+// UUID so getMetadata() reads the right point.
+const SEARCHTEXT_MIGRATION_FLAG_KEY = 'phase_05_search_text_migration_applied';
 const MIGRATION_SCAN_BATCH = 100;
 
 // Fixed UUID for the migration flag's metadata point. Stable across
@@ -20,6 +24,9 @@ const MIGRATION_SCAN_BATCH = 100;
 // ever add more flags, switch to a namespace UUID v5 — one literal
 // is enough today.
 const MIGRATION_FLAG_POINT_ID = '00000000-0000-4000-8000-000000000001';
+// Phase 05 — sibling UUID for the searchText migration flag.
+// Same rationale as MIGRATION_FLAG_POINT_ID: stable across boots.
+const SEARCHTEXT_FLAG_POINT_ID = '00000000-0000-4000-8000-000000000002';
 
 export type Visibility = 'public' | 'private';
 
@@ -43,6 +50,12 @@ export interface DocumentChunkPayload {
   headingPath?: string[];
   pageNumber?: number;
   tokenCount?: number;
+  // Phase 05 / p5-T01 / FR-1 — verbatim copy of `chunk`, indexed as a
+  // full-text payload field. SearchChunks uses it for the lexical
+  // prefetch in the hybrid RRF query. Optional in the type because
+  // pre-Phase-05 chunks on disk don't have it; the migration fills
+  // them in, and upsertChunk(s) set it on every new chunk.
+  searchText?: string;
 }
 
 export interface DocumentChunk {
@@ -200,8 +213,13 @@ export async function setMetadata(key: string, value: string): Promise<void> {
 // ponytail: one-flag-one-literal — only the migration flag exists
 // today. When the second flag lands, replace with uuidv5 against a
 // stable namespace.
+// Phase 05 / p5-T01 — second flag added. Still two literals; the
+// ponytail comment above is stale but the rule (one UUID per flag,
+// no namespace hash yet) still holds. A namespace UUIDv5 swap is
+// the move when a third flag lands.
 function metadataPointIdFor(key: string): string {
   if (key === MIGRATION_FLAG_KEY) return MIGRATION_FLAG_POINT_ID;
+  if (key === SEARCHTEXT_MIGRATION_FLAG_KEY) return SEARCHTEXT_FLAG_POINT_ID;
   throw new Error(`Unknown metadata key: ${key}`);
 }
 
@@ -245,6 +263,27 @@ async function ensurePayloadIndexes(): Promise<void> {
       log.debug({ field: 'pageNumber' }, 'Payload index already exists');
     } else {
       log.warn({ err: message, field: 'pageNumber' }, 'Failed to create payload index');
+    }
+  }
+  // Phase 05 / p5-T01 / FR-2 — full-text payload index on searchText.
+  // The lexical prefetch in searchChunks filters with
+  // `match: { text: <q> }` against this index. The text index uses
+  // Qdrant's default tokenizer (multilingual, lowercase, stemmer off)
+  // — fine for technical content where the goal is "did these
+  // tokens overlap", not "is this an English-language chunk".
+  try {
+    await client.createPayloadIndex(COLLECTION_NAME, {
+      field_name: 'searchText',
+      field_schema: 'text',
+      wait: true,
+    });
+    log.info({ field: 'searchText' }, 'Created payload index');
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (/already exists|Index already exists/i.test(message)) {
+      log.debug({ field: 'searchText' }, 'Payload index already exists');
+    } else {
+      log.warn({ err: message, field: 'searchText' }, 'Failed to create payload index');
     }
   }
 }
@@ -342,6 +381,88 @@ export async function migratePayloads(): Promise<{
   return { scanned, updated, alreadyMigrated: false };
 }
 
+// Phase 05 / p5-T01 / FR-3 — one-shot migration that backfills the
+// `searchText` payload field on every pre-Phase-05 chunk. Mirrors
+// migratePayloads() line-for-line in shape: scroll in pages of
+// MIGRATION_SCAN_BATCH, setPayload on points missing the field,
+// stamp the flag at the end. Idempotent (the in-loop `if (!has)`
+// gate plus the flag guard). Order matters — this runs AFTER
+// migratePayloads so legacy chunks already have ownerId/visibility,
+// which keeps the lexical prefetch's visibility filter consistent.
+export async function migrateSearchTextPayloads(): Promise<{
+  scanned: number;
+  updated: number;
+  alreadyMigrated: boolean;
+}> {
+  const flag = await getMetadata(SEARCHTEXT_MIGRATION_FLAG_KEY);
+  if (flag !== null) {
+    log.info({ migratedAt: flag }, 'Qdrant searchText migration already applied');
+    return { scanned: 0, updated: 0, alreadyMigrated: true };
+  }
+
+  log.info('Running Qdrant searchText migration');
+  let scanned = 0;
+  let updated = 0;
+  let offset: string | number | Record<string, unknown> | undefined = undefined;
+
+  // ponytail: scan-then-batch — same shape as migratePayloads.
+  // Memory bounded by MIGRATION_SCAN_BATCH. Swap to parallel
+  // scroll + async writes if collections grow past ~1M points;
+  // today the self-hosted profile is small enough that the simple
+  // loop is fine.
+  while (true) {
+    const result = (await client.scroll(COLLECTION_NAME, {
+      limit: MIGRATION_SCAN_BATCH,
+      offset,
+      with_payload: true,
+      with_vector: false,
+    } as unknown as Parameters<typeof client.scroll>[1])) as {
+      points?: Array<{ id: string | number; payload?: Record<string, unknown> | null }>;
+      next_page_offset?: string | number | Record<string, unknown> | null;
+    };
+
+    const points = result.points ?? [];
+    if (points.length === 0) break;
+
+    const updates = new Map<string, string>();
+    for (const point of points) {
+      scanned++;
+      const payload = point.payload ?? {};
+      if (!('searchText' in payload)) {
+        const chunk = typeof payload.chunk === 'string' ? payload.chunk : '';
+        updates.set(String(point.id), chunk);
+      }
+    }
+
+    if (updates.size > 0) {
+      // setPayload only supports one payload object per call, so we
+      // call it per-point for the updates. Bounded by
+      // MIGRATION_SCAN_BATCH per page; the simple loop is fine for
+      // a one-shot migration and keeps the payload value coherent
+      // with the `chunk` it was derived from.
+      // ponytail: per-point calls — could batch into one upsert if
+      // backfill volume becomes a problem; the loop is honest and
+      // mirrors the Phase 04 setOwnerVisibility shape.
+      for (const [id, chunk] of updates) {
+        await client.setPayload(COLLECTION_NAME, {
+          wait: true,
+          payload: { searchText: chunk },
+          points: [id as unknown as string | number],
+        } as unknown as Parameters<typeof client.setPayload>[1]);
+      }
+      updated += updates.size;
+    }
+
+    const next = result.next_page_offset;
+    if (next === undefined || next === null) break;
+    offset = next as unknown as typeof offset;
+  }
+
+  await setMetadata(SEARCHTEXT_MIGRATION_FLAG_KEY, new Date().toISOString());
+  log.info({ scanned, updated }, 'Qdrant searchText migration complete');
+  return { scanned, updated, alreadyMigrated: false };
+}
+
 export async function upsertChunk(chunk: DocumentChunk): Promise<void> {
   log.debug({ chunkId: chunk.id }, 'Upserting single chunk');
   await client.upsert(COLLECTION_NAME, {
@@ -350,7 +471,7 @@ export async function upsertChunk(chunk: DocumentChunk): Promise<void> {
       {
         id: chunk.id,
         vector: chunk.vector,
-        payload: chunk.payload as unknown as Record<string, unknown>,
+        payload: withSearchText(chunk.payload),
       },
     ],
   });
@@ -367,11 +488,24 @@ export async function upsertChunks(chunks: DocumentChunk[]): Promise<void> {
     points: chunks.map((chunk) => ({
       id: chunk.id,
       vector: chunk.vector,
-      payload: chunk.payload as unknown as Record<string, unknown>,
+      payload: withSearchText(chunk.payload),
     })),
   });
 
   log.debug({ elapsedMs: Date.now() - startTime }, 'Upsert complete');
+}
+
+// Phase 05 / p5-T01 / FR-1 — stamp `searchText = chunk` on every
+// upserted point so the full-text payload index has something to
+// index. Pure function over the payload; never mutates the
+// caller's object. Pre-Phase-05 chunks that don't carry `searchText`
+// are populated here; the migration backfills the field on every
+// legacy point too.
+function withSearchText(payload: DocumentChunkPayload): Record<string, unknown> {
+  return {
+    ...payload,
+    searchText: payload.chunk,
+  };
 }
 
 export async function searchChunks(

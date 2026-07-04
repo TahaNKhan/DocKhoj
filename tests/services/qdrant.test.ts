@@ -220,6 +220,67 @@ describe('upsertChunks', () => {
     expect(call[1].points[0].id).toBe('p1');
     expect(call[1].points[0].vector).toEqual([0.1, 0.2]);
   });
+
+  // Phase 05 / p5-T01 / FR-1 — every upserted point carries
+  // searchText = chunk so the full-text payload index has something
+  // to index. The lexical prefetch in searchChunks filters on this
+  // field; a missing field means the lexical channel returns no
+  // hits for that chunk.
+  it('stamps searchText = chunk on every upserted point', async () => {
+    mockUpsert.mockResolvedValueOnce({});
+    await upsertChunks([
+      {
+        id: 'p1',
+        vector: [0.1, 0.2],
+        payload: { chunk: 'hello world', fileName: 'x', fileType: '.md', filePath: 'x.md', chunkIndex: 0, totalChunks: 1 },
+      },
+      {
+        id: 'p2',
+        vector: [0.3, 0.4],
+        payload: { chunk: 'foo bar', fileName: 'y', fileType: '.md', filePath: 'y.md', chunkIndex: 0, totalChunks: 1 },
+      },
+    ]);
+    const points = mockUpsert.mock.calls[0][1].points;
+    expect(points[0].payload.searchText).toBe('hello world');
+    expect(points[1].payload.searchText).toBe('foo bar');
+    // Also assert the caller's original payload was not mutated —
+    // withSearchText() returns a fresh object.
+    expect('searchText' in points[0].payload).toBe(true);
+  });
+
+  it('searchText index is created on initCollection (FR-2)', async () => {
+    mockGetCollections.mockResolvedValueOnce({
+      collections: [{ name: 'documents_test' }],
+    });
+    mockCreatePayloadIndex.mockResolvedValue({});
+
+    await initCollection();
+
+    const calls = mockCreatePayloadIndex.mock.calls;
+    const searchTextCall = calls.find((c) => c[1].field_name === 'searchText');
+    expect(searchTextCall).toBeDefined();
+    expect(searchTextCall![1].field_schema).toBe('text');
+    expect(searchTextCall![1].wait).toBe(true);
+  });
+
+  it('searchText index creation tolerates "index already exists" (idempotent boot)', async () => {
+    mockGetCollections.mockResolvedValueOnce({
+      collections: [{ name: 'documents_test' }],
+    });
+    // Existing keyword indexes succeed; the searchText one throws
+    // the documented "already exists" error — the loop should
+    // swallow it and the call should still resolve.
+    mockCreatePayloadIndex
+      .mockResolvedValueOnce({}) // fileName
+      .mockResolvedValueOnce({}) // filePath
+      .mockResolvedValueOnce({}) // fileType
+      .mockRejectedValueOnce(new Error('Index already exists')) // ownerId (Phase 04 path)
+      .mockResolvedValueOnce({}) // visibility
+      .mockResolvedValueOnce({}) // pageNumber
+      .mockRejectedValueOnce(new Error('Index already exists')); // searchText
+
+    await expect(initCollection()).resolves.not.toThrow();
+  });
 });
 
 // Phase 03 / p3-T02 — deleteByFilePath.

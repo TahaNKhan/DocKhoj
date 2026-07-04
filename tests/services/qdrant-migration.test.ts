@@ -41,6 +41,7 @@ import {
   initCollection,
   setOwnerVisibility,
   migratePayloads,
+  migrateSearchTextPayloads,
   getMetadata,
   setMetadata,
 } from '../../src/services/qdrant.js';
@@ -70,6 +71,25 @@ describe('Phase 04 / p4-T03 — payload indexes', () => {
     // Pre-Phase-04 indexes still present.
     expect(fields).toContain('fileName');
     expect(fields).toContain('filePath');
+  });
+
+  // Phase 05 / p5-T01 / FR-2 — searchText index is created with the
+  // `text` schema (not keyword). This is the field the lexical
+  // prefetch in searchChunks filters on with `match: { text: q }`.
+  it('ensurePayloadIndexes creates a text schema index for searchText', async () => {
+    mockGetCollections.mockResolvedValueOnce({
+      collections: [{ name: DOCUMENTS_COLLECTION }],
+    });
+    mockCreatePayloadIndex.mockResolvedValue({});
+
+    await initCollection();
+
+    const searchTextCall = mockCreatePayloadIndex.mock.calls.find(
+      (c) => c[1].field_name === 'searchText'
+    );
+    expect(searchTextCall).toBeDefined();
+    expect(searchTextCall![1].field_schema).toBe('text');
+    expect(searchTextCall![1].wait).toBe(true);
   });
 
   it('ensurePayloadIndexes tolerates "index already exists" on ownerId/visibility', async () => {
@@ -341,5 +361,104 @@ describe('migratePayloads', () => {
     expect(mockScroll).toHaveBeenCalledTimes(2);
     // Second scroll should pass the offset from the first page.
     expect(mockScroll.mock.calls[1][1].offset).toBe(999);
+  });
+});
+
+// Phase 05 / p5-T01 / FR-3 — backfill migration for the searchText
+// payload field. Same shape as migratePayloads above but stamps
+// `searchText = payload.chunk` on every point missing the field
+// rather than the owner/visibility pair.
+describe('migrateSearchTextPayloads', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('is a no-op when the searchText migration flag is already set', async () => {
+    mockRetrieve.mockResolvedValueOnce([
+      {
+        id: '00000000-0000-4000-8000-000000000002',
+        payload: {
+          key: 'phase_05_search_text_migration_applied',
+          value: '2026-07-04T00:00:00Z',
+        },
+      },
+    ]);
+
+    const result = await migrateSearchTextPayloads();
+    expect(result).toEqual({ scanned: 0, updated: 0, alreadyMigrated: true });
+    expect(mockScroll).not.toHaveBeenCalled();
+    expect(mockSetPayload).not.toHaveBeenCalled();
+  });
+
+  it('stamps searchText = chunk on points missing the field and writes the flag', async () => {
+    mockRetrieve.mockResolvedValueOnce([]); // flag absent
+    mockScroll.mockResolvedValueOnce({
+      points: [
+        // Legacy point — no searchText field yet.
+        { id: 'p1', payload: { chunk: 'alpha bravo', fileName: 'a.md', filePath: 'a.md' } },
+        // Already-stamped point — must be skipped.
+        {
+          id: 'p2',
+          payload: {
+            chunk: 'charlie delta',
+            fileName: 'b.md',
+            filePath: 'b.md',
+            searchText: 'charlie delta',
+          },
+        },
+        // Legacy point whose chunk field is missing entirely — the
+        // migration falls back to '' so the index entry is well-defined
+        // rather than undefined.
+        { id: 'p3', payload: { fileName: 'c.md', filePath: 'c.md' } },
+      ],
+      next_page_offset: null,
+    });
+    mockSetPayload.mockResolvedValue({});
+    mockUpsert.mockResolvedValueOnce({}); // setMetadata for the flag
+
+    const result = await migrateSearchTextPayloads();
+
+    expect(result.scanned).toBe(3);
+    expect(result.updated).toBe(2);
+    expect(result.alreadyMigrated).toBe(false);
+
+    // Two setPayload calls — one for p1, one for p3 (p2 already had
+    // the field). Order is not strictly guaranteed by the spec but
+    // Set iteration order is insertion order in modern JS, so the
+    // first call corresponds to p1.
+    expect(mockSetPayload).toHaveBeenCalledTimes(2);
+    const callIds = mockSetPayload.mock.calls.map((c) => c[1].points[0]).sort();
+    expect(callIds).toEqual(['p1', 'p3']);
+    const firstPayload = mockSetPayload.mock.calls[0][1].payload;
+    expect(firstPayload.searchText).toBe('alpha bravo');
+
+    // The flag is set with the new key + a stable UUID.
+    expect(mockUpsert).toHaveBeenCalledTimes(1);
+    const flagUpsert = mockUpsert.mock.calls[0];
+    expect(flagUpsert[0]).toBe(METADATA_COLLECTION);
+    expect(flagUpsert[1].points[0].id).toBe('00000000-0000-4000-8000-000000000002');
+    expect(flagUpsert[1].points[0].payload.key).toBe('phase_05_search_text_migration_applied');
+    expect(typeof flagUpsert[1].points[0].payload.value).toBe('string');
+  });
+
+  it('is idempotent on a re-run when every point already has searchText', async () => {
+    mockRetrieve.mockResolvedValueOnce([]);
+    mockScroll.mockResolvedValueOnce({
+      points: [
+        {
+          id: 'p1',
+          payload: { chunk: 'a', fileName: 'a.md', filePath: 'a.md', searchText: 'a' },
+        },
+      ],
+      next_page_offset: null,
+    });
+    mockUpsert.mockResolvedValueOnce({}); // setMetadata
+
+    const result = await migrateSearchTextPayloads();
+
+    expect(result.scanned).toBe(1);
+    expect(result.updated).toBe(0);
+    // No point lacked the field, so no setPayload.
+    expect(mockSetPayload).not.toHaveBeenCalled();
   });
 });
