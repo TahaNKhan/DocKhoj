@@ -51,7 +51,7 @@ export function App() {
   );
 }
 
-function Chrome() {
+export function Chrome() {
   const [location, setLocation] = useLocation();
   const isChatRoute = location === '/' || location.startsWith('/chat');
   const isUploadRoute = location.startsWith('/upload');
