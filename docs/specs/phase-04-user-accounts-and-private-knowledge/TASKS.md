@@ -330,7 +330,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Component tests.
 - **Dependencies.** T7, T17.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T20. .env.example + README updates
 
