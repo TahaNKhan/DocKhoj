@@ -196,7 +196,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - The chat-stream test uses a real SSE consumer and asserts no chunks from the private file leak via the `sources` event.
 - **Dependencies.** T10.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T12. Agent tools visibility
 
@@ -247,7 +247,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - User A's session list grows when they create new conversations; user B's doesn't.
 - **Dependencies.** T10.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T15. /api/status user-scoped
 
@@ -310,7 +310,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Component tests cover both chips and the owner rendering.
 - **Dependencies.** T10.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T19. SPA: AdminUsers + AdminInvites
 
