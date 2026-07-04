@@ -51,7 +51,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
 ## T4. UserStore + AuthSessionStore + InviteStore + password.ts
 
 - **Description.** Write the four service modules + vitest unit tests.
-  - `password.ts` — `hashPassword(plain): Promise<string>` and `verifyPassword(plain, hash): Promise<boolean>`. Uses `argon2` (preferred) or `bcrypt` (fallback if argon2 fails to build). Hash format string carries the algorithm prefix so verify can dispatch.
+  - `password.ts` — `hashPassword(plain): Promise<string>` and `verifyPassword(plain, hash): Promise<boolean>`. Uses Node stdlib `crypto.scrypt` (N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key). Hash format string carries the algorithm prefix (`scrypt$N$r$p$saltB64$derivedB64`) so a future migration to argon2id is a verify-path swap with no schema change.
   - `user-store.ts` — `createUser({username, password, role}): Promise<User>`, `findByUsername(username)`, `findById(id)`, `updateLastLogin(id)`, `listAll()`, `deleteById(id)`, `updatePasswordHash(id, hash)`, `usernameExists(username)`. Username validation (`^[A-Za-z0-9_-]{3,32}$`) lives here.
   - `auth-session-store.ts` — `create(userId)`, `findById(id)` (returns null if `expires_at < now`), `touch(id)` (updates `last_seen_at` + `expires_at`), `deleteById(id)`, `deleteByUser(userId)`.
   - `invite-store.ts` — `create({createdBy, expiresInDays?})` returns `{id, token, expiresAt}` (token = 32-byte random b64url; only the SHA-256 hash stored), `findByRawToken(rawToken)`, `markUsed(id, userId)`, `listOutstanding()`, `deleteById(id)`.

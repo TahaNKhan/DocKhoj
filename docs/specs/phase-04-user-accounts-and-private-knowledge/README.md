@@ -17,7 +17,7 @@
 Phase 04 introduces a real user model. Every existing assumption (single-tenant, no auth, free-for-all visibility) changes:
 
 - **New persistence:** users, sessions, invites tables; `owner_id` + `visibility` columns on `documents`; `owner_id` + `visibility` payload fields on every Qdrant chunk.
-- **New auth layer:** HTTP middleware that rejects unauthenticated `/api/*` calls except `/api/auth/*` and `/api/health`; server-side sessions via HttpOnly cookies; argon2id password hashing.
+- **New auth layer:** HTTP middleware that rejects unauthenticated `/api/*` calls except `/api/auth/*` and `/api/health`; server-side sessions via HttpOnly cookies; Node stdlib `crypto.scrypt` password hashing (no native build).
 - **Qdrant filter rewrite:** every search path (`/api/search`, `/api/search/rag`, `/api/chat`, `/api/chat/stream`, agent-loop tools) must apply an ownership/visibility filter. This is the load-bearing change — one missed path leaks another user's private chunks.
 - **SPA rewrite:** new `/login`, `/register`, `/register/:inviteToken`, `/admin/users`, `/admin/invites` pages; route guard; top-bar user menu; upload-page visibility toggle; documents-list owner column.
 - **Conversations get scoped** to their owner; pre-phase-04 conversations are dropped to give the user a clean slate for the new ownership model.
@@ -29,7 +29,7 @@ The diff is server-wide, SPA-wide, and schema-wide. A dedicated branch + worktre
   - `users` SQLite table (`id`, `username`, `password_hash`, `role` (`admin|user`), `created_at`, `last_login_at`).
   - `sessions` SQLite table (`id`, `user_id`, `created_at`, `expires_at`, `last_seen_at`).
   - `invites` SQLite table (`id`, `token_hash`, `created_by`, `created_at`, `expires_at`, `used_by`, `used_at`).
-  - Argon2id password hashing (`argon2` npm package — the native build needs to succeed in the Docker image; documented risk in `design.md`).
+  - `crypto.scrypt` password hashing (Node stdlib, no native build, hash format `scrypt$N$r$p$salt$derived` keeps a future argon2id swap as a single-file verify-path change).
   - HttpOnly, SameSite=Lax cookie `dockhoj_sid` carrying the opaque session id; 30-day rolling expiry; server-side revocation by deleting the row.
   - New endpoints:
     - `POST /api/auth/register` — first-user-only, subsequent calls return 403.
