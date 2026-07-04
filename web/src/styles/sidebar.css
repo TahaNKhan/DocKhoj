@@ -198,6 +198,12 @@
   }
 }
 
+/* Brand mark + name: hidden on desktop (the topbar shows it
+   there). Only the mobile sidebar drawer displays it. */
+.side-brand {
+  display: none;
+}
+
 .side-foot {
   margin-top: auto;
   padding-top: 16px;
