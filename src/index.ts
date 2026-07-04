@@ -13,6 +13,7 @@ import { healthRoutes } from './routes/api-health.js';
 import { statusRoutes } from './routes/api-status.js';
 import { documentRoutes } from './routes/api-documents.js';
 import { authRoutes } from './routes/api-auth.js';
+import { adminRoutes } from './routes/api-admin.js';
 import { initCollection, migratePayloads } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
@@ -106,6 +107,11 @@ export async function buildApp() {
   // The authPlugin (above) exempts /api/auth/* already, so these
   // handlers run without a session check.
   await fastify.register(authRoutes);
+
+  // Phase 04 / p4-T07 — /api/admin/{invites, users, password}.
+  // Each handler re-checks request.user.role === 'admin'; the
+  // authPlugin only handles the auth-vs-no-auth distinction.
+  await fastify.register(adminRoutes);
 
   return fastify;
 }

@@ -117,6 +117,25 @@ export class UserStore {
     this.db.prepare(`UPDATE users SET password_hash = ? WHERE id = ?`).run(hash, id);
   }
 
+  /** Phase 04 / p4-T07 / FR-17 — atomic hash swap + session revoke.
+   *  Wraps the UPDATE and the caller's `revokeSessions(userId)` in
+   *  a single SQLite transaction so a partial failure can't leave
+   *  the user with a fresh hash while old sessions linger (or
+   *  vice-versa). Returns the number of sessions the caller
+   *  revoked. The `revokeSessions` callback keeps the UserStore
+   *  unaware of the AuthSessionStore — same one-direction-of-deps
+   *  principle the rest of the stores follow. */
+  resetPasswordAndRevokeSessions(
+    id: string,
+    hash: string,
+    revokeSessions: (userId: string) => number,
+  ): number {
+    return this.db.transaction(() => {
+      this.updatePasswordHash(id, hash);
+      return revokeSessions(id);
+    })();
+  }
+
   usernameExists(username: string): boolean {
     const row = this.db
       .prepare(`SELECT 1 AS x FROM users WHERE username = ?`)

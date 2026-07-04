@@ -32,6 +32,21 @@ interface DocumentDbRow {
   chunk_count: number;
 }
 
+// Phase 04 / p4-T07 / FR-16 — shape used by the admin "delete user"
+// cascade. Distinct from `DocumentRow` (which carries no ownership /
+// visibility fields) so the list-and-delete payloads stay narrow.
+export interface OwnedDocument {
+  fileId: string;
+  fileName: string;
+  visibility: 'public' | 'private';
+}
+
+interface OwnedDocumentDbRow {
+  file_id: string;
+  file_name: string;
+  visibility: string;
+}
+
 export interface InsertDocument {
   fileId: string;
   fileName: string;
@@ -125,6 +140,31 @@ export class DocumentStore {
       .get() as { c: number };
     return row.c;
   }
+
+  /** Phase 04 / p4-T07 / FR-16 — documents owned by the given user
+   *  with visibility='private'. The admin user-delete cascade uses
+   *  this to know which chunks + on-disk files to remove before
+   *  deleting the SQLite row. Public-owned files are intentionally
+   *  excluded (they become shared via `ON DELETE SET NULL` on
+   *  `documents.owner_id` when the user row goes). */
+  findPrivateByOwner(ownerId: string): OwnedDocument[] {
+    const rows = this.db
+      .prepare(
+        `SELECT file_id, file_name, visibility
+         FROM documents
+         WHERE owner_id = ? AND visibility = 'private'`,
+      )
+      .all(ownerId) as OwnedDocumentDbRow[];
+    return rows.map(toOwnedDocument);
+  }
+}
+
+function toOwnedDocument(r: OwnedDocumentDbRow): OwnedDocument {
+  return {
+    fileId: r.file_id,
+    fileName: r.file_name,
+    visibility: r.visibility as 'public' | 'private',
+  };
 }
 
 function toDocumentRow(r: DocumentDbRow): DocumentRow {
