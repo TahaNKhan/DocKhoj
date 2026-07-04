@@ -64,7 +64,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - A unit test asserts username validation rejects `"ab"` (too short), `"hello world"` (space), and accepts `"alice-42"`.
 - **Dependencies.** T2.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T5. Auth Fastify plugin (middleware) + mount in index.ts
 
