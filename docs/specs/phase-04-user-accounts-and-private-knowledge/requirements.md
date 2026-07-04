@@ -31,7 +31,7 @@ The motivation is the deployment topology of self-hosted DocKhoj: once a server 
 ### A. Users & accounts
 - **FR-1.** `POST /api/auth/register` creates a new user. Body: `{ username, password }`. If the `users` table is empty, the new user is created with `role = 'admin'`. Otherwise the endpoint returns 403 with `{ error: "Registration is invite-only" }`.
 - **FR-2.** `username` is 3–32 characters, `[A-Za-z0-9_-]+`, case-sensitive, unique.
-- **FR-3.** `password` is at least 12 characters, at least one non-alphanumeric character. Hashed with argon2id at OWASP-recommended parameters (memory cost ≥ 19 MiB, time cost ≥ 2, parallelism = 1).
+- **FR-3.** `password` is at least 12 characters, at least one non-alphanumeric character. Hashed with Node's stdlib `crypto.scrypt` (N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key). Hash format prefix is `scrypt$…` so a future migration to argon2id is a verify-path swap with no schema change.
 - **FR-4.** `POST /api/auth/login` body: `{ username, password }`. On success: creates a row in `sessions` (id = 32-byte random URL-safe base64), sets `dockhoj_sid` cookie (HttpOnly, SameSite=Lax, Path=/, Max-Age=2592000), updates `users.last_login_at`, returns `{ id, username, role }`.
 - **FR-5.** On login failure: returns 401 with `{ error: "Invalid username or password" }`. No distinction between bad-username and bad-password in the error message (no enumeration).
 - **FR-6.** `POST /api/auth/logout` deletes the current session row (if any) and clears the cookie. Idempotent.
@@ -112,8 +112,8 @@ The motivation is the deployment topology of self-hosted DocKhoj: once a server 
 ## Non-functional requirements
 - **NFR-1.** Passwords are never returned in any API response. The `password_hash` column is never read by any endpoint other than the login path. A test asserts no `password` substring appears in any JSON response.
 - **NFR-2.** Cookies: `HttpOnly`, `SameSite=Lax`, `Path=/`, `Secure` when `NODE_ENV === 'production'`. `Max-Age = 30 * 24 * 3600`.
-- **NFR-3.** Argon2id parameters: `memoryCost = 19456` (19 MiB), `timeCost = 2`, `parallelism = 1`. These are the OWASP-recommended minimums for argon2id as of 2024.
-- **NFR-4.** The `argon2` npm package must build natively inside the existing Docker image (Alpine-based Node 20). If it doesn't, we fall back to `bcrypt` with `cost = 12` — the design documents both options; the choice is fixed by which builds cleanly.
+- **NFR-3.** Password hashing uses Node's built-in `crypto.scrypt`. Parameters: `N=2^14=16384, r=8, p=1, 16-byte salt, 64-byte derived key`. The hash string format is `scrypt$N$r$p$saltB64$derivedB64` so `verifyPassword` parses the prefix + params and dispatches — a future migration to argon2id or bcrypt is a single-file swap with no DB migration.
+- **NFR-4.** No native dependencies. `crypto.scrypt` is part of Node's stdlib (`node:crypto`), so the hashing path works in both the dev host and the Alpine-based Docker image without `apk add python3 make g++`. If the deployment ever needs stronger parameters, swap to argon2id by replacing the `services/password.ts` body — call sites and DB schema are unchanged.
 - **NFR-5.** Session row lookups are indexed by `id` (primary key) — verified by an `EXPLAIN QUERY PLAN` test.
 - **NFR-6.** The visibility filter MUST be applied on every Qdrant search / chat / tool path. Verified by an explicit test suite (see FR-40).
 - **NFR-7.** The migration runner remains idempotent. Migrations 005 + 006 use `ALTER TABLE … ADD COLUMN` (which is idempotent in SQLite when guarded with `NOT EXISTS`-style column checks in the migration runner — see the existing pattern in `migrate.ts`) and `DELETE FROM` (idempotent when guarded by a row count check).
