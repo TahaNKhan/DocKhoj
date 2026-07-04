@@ -22,12 +22,27 @@ set -e
 DOCKHOJ_HOME="${DOCKHOJ_HOME:-$HOME/.dockhoj}"
 export DOCKHOJ_HOME
 
-mkdir -p "$DOCKHOJ_HOME/db" "$DOCKHOJ_HOME/qdrant"
+mkdir -p "$DOCKHOJ_HOME/db" "$DOCKHOJ_HOME/qdrant" "$DOCKHOJ_HOME/documents"
 
 # One-shot migration from the old layout. Each step is guarded so the
 # script is safe to re-run: if the source is empty or the target
 # already has data, the step is a no-op.
 migrate_state() {
+  # Uploaded files: ./documents/* → ~/.dockhoj/documents/. Same
+  # copy-not-move pattern as Qdrant below: while the app container
+  # could be holding an open fd on a recently-written file, the
+  # user can review the duplicate and clean it up after the new
+  # layout is verified.
+  if [[ -d ./documents ]] \
+     && [[ -n "$(ls -A ./documents 2>/dev/null || true)" ]] \
+     && [[ -z "$(ls -A "$DOCKHOJ_HOME/documents" 2>/dev/null || true)" ]]; then
+    echo "Migrating uploaded documents: ./documents/ → $DOCKHOJ_HOME/documents/"
+    cp -a ./documents/. "$DOCKHOJ_HOME/documents/"
+    echo "  Old directory preserved at ./documents/. Run"
+    echo "  'rm -rf ./documents' after verifying the app is"
+    echo "  reading from $DOCKHOJ_HOME/documents."
+  fi
+
   # Qdrant: ./qdrant_data/* (old bind mount target) → ~/.dockhoj/qdrant/
   # Copy only — never delete ./qdrant_data/. While the qdrant
   # container is running its files are mmap-locked and `rm` from the

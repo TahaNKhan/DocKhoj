@@ -53,7 +53,14 @@ import { UserStore } from '../../src/services/user-store.js';
 import { AuthSessionStore } from '../../src/services/auth-session-store.js';
 
 let TEMP_DIR: string;
-let ORIGINAL_CWD: string;
+// Each test that needs an upload-dir sets process.env.UPLOAD_DIR
+// to <TEMP_DIR>/documents in beforeEach and restores it in
+// afterEach. With the post-Phase-05 path resolution, the upload
+// + download routes ignore process.cwd() entirely — they honor
+// UPLOAD_DIR first, falling back to $DOCKHOJ_HOME/documents only
+// for production. Without per-test UPLOAD_DIR, tests would write
+// into the developer's $HOME/.dockhoj — a real leak we caught.
+let ORIGINAL_UPLOAD_DIR: string | undefined;
 
 function fakeMultipart(filename: string, content: string, fields?: Record<string, string>) {
   const boundary = '----test123';
@@ -103,8 +110,9 @@ describe('POST /upload', () => {
 
   beforeEach(async () => {
     TEMP_DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'dockhoj-test-'));
-    ORIGINAL_CWD = process.cwd();
-    process.chdir(TEMP_DIR);
+    ORIGINAL_UPLOAD_DIR = process.env.UPLOAD_DIR;
+    process.env.UPLOAD_DIR = path.join(TEMP_DIR, 'documents');
+    await fs.mkdir(process.env.UPLOAD_DIR, { recursive: true });
     mockEmbedTexts.mockReset();
     mockEmbedTexts.mockResolvedValue([[0.1, 0.2], [0.3, 0.4]]);
     mockUpsertChunks.mockClear();
@@ -123,7 +131,8 @@ describe('POST /upload', () => {
 
   afterEach(async () => {
     db.close();
-    process.chdir(ORIGINAL_CWD);
+    if (ORIGINAL_UPLOAD_DIR === undefined) delete process.env.UPLOAD_DIR;
+    else process.env.UPLOAD_DIR = ORIGINAL_UPLOAD_DIR;
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
   });
 
@@ -282,8 +291,12 @@ describe('GET /files', () => {
   let db: ReturnType<typeof Database>;
   beforeEach(async () => {
     TEMP_DIR = await fs.mkdtemp(path.join(os.tmpdir(), 'dockhoj-test-'));
-    ORIGINAL_CWD = process.cwd();
-    process.chdir(TEMP_DIR);
+    // Same UPLOAD_DIR override as POST /upload — keeps the test
+    // off the developer's $HOME. See the field comment for the
+    // full rationale.
+    ORIGINAL_UPLOAD_DIR = process.env.UPLOAD_DIR;
+    process.env.UPLOAD_DIR = path.join(TEMP_DIR, 'documents');
+    await fs.mkdir(process.env.UPLOAD_DIR, { recursive: true });
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     migrate(db);
@@ -291,7 +304,8 @@ describe('GET /files', () => {
 
   afterEach(async () => {
     db.close();
-    process.chdir(ORIGINAL_CWD);
+    if (ORIGINAL_UPLOAD_DIR === undefined) delete process.env.UPLOAD_DIR;
+    else process.env.UPLOAD_DIR = ORIGINAL_UPLOAD_DIR;
     await fs.rm(TEMP_DIR, { recursive: true, force: true });
   });
 

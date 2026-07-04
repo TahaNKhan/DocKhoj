@@ -317,10 +317,13 @@ The cross-user retrieval e2e in `tests/e2e/cross-user-retrieval.test.ts` require
 
 ## Persistence
 
-Two host directories under `$DOCKHOJ_HOME` (default `~/.dockhoj/`):
+Three host directories under `$DOCKHOJ_HOME` (default `~/.dockhoj/`):
 
 - `$DOCKHOJ_HOME/db` — bind-mounted to `/app/data` in the app container (SQLite `conversations.db` + WAL + SHM)
 - `$DOCKHOJ_HOME/qdrant` — bind-mounted to `/qdrant/storage` in the qdrant container
+- `$DOCKHOJ_HOME/documents` — uploaded files. Bind-mounted to `/app/documents` in the app container; the app's `UPLOAD_DIR=/app/documents` env points the upload/download routes at the bind-mount target.
+
+The legacy in-repo layout used `./qdrant_data/` and `./documents/` for the latter two. `./restart.sh`'s `migrate_state` block copies both into `$DOCKHOJ_HOME` on first run after upgrading (one-shot, idempotent); the old directories are left in place so the user can `rm -rf` them after verifying the new layout works.
 
 Point `DOCKHOJ_HOME` elsewhere to run multiple stacks on one host, or back the data onto a separate disk:
 

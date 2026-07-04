@@ -1,14 +1,33 @@
 import { FastifyInstance } from 'fastify';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import type Database from 'better-sqlite3';
 import { DocumentStore } from '../services/document-store.js';
 import { downloadLog as log } from '../utils/logger.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DEFAULT_FILES_DIR = path.join(__dirname, '..', '..', 'documents');
+// Files-directory resolution — same ladder as upload.ts:
+//   1. process.env.UPLOAD_DIR (the single env var that controls
+//      the documents root everywhere; honored by upload.ts,
+//      api-documents.ts, and the e2e suite).
+//   2. $DOCKHOJ_HOME/documents — the in-Docker bind-mount target.
+//   3. ~/.dockhoj/documents — the absolute-home fallback for
+//      `npm run dev` without DOCKHOJ_HOME set.
+//
+// ponytail: identical shape to upload.ts. The two defaults used
+// to drift (upload.ts → './documents' relative to cwd; download.ts
+// → '<repo>/documents' absolute). They collapse into one
+// resolution at the top of both files.
+function resolveFilesDir(): string {
+  if (process.env.UPLOAD_DIR) {
+    return path.resolve(process.env.UPLOAD_DIR);
+  }
+  const dockhojHome = process.env.DOCKHOJ_HOME
+    || path.join(os.homedir(), '.dockhoj');
+  return path.join(dockhojHome, 'documents');
+}
+
+const DEFAULT_FILES_DIR = resolveFilesDir();
 
 type DB = Database.Database;
 

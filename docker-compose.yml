@@ -50,7 +50,13 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./documents:/app/documents
+      # Persist uploaded files into ~/.dockhoj/documents/. The
+      # in-container path /app/documents is what the app's
+      # UPLOAD_DIR=/app/documents env (below) resolves to, and
+      # restart.sh's migrate_state copies the legacy ./documents/
+      # contents into $DOCKHOJ_HOME/documents/ on the first run
+      # after upgrading.
+      - ${DOCKHOJ_HOME}/documents:/app/documents
       # Persist SQLite (conversations + messages) into ~/.dockhoj/db/.
       # Without this, the DB lives inside the container's writable
       # layer and is wiped every time the app container is recreated
@@ -63,6 +69,12 @@ services:
       - NODE_ENV=production
       - OLLAMA_BASE_URL=http://ollama:11434
       - EMBEDDING_MODEL=nomic-embed-text
+      # Single env var that controls the documents root. In-Docker
+      # this resolves to the bind-mount target /app/documents; in
+      # `npm run dev` the same env var (if set) or $DOCKHOJ_HOME
+      # controls the host path. See src/routes/upload.ts and
+      # src/routes/download.ts for the resolution ladder.
+      - UPLOAD_DIR=/app/documents
       - QDRANT_URL=http://qdrant:6333
       - QDRANT_COLLECTION=documents
       - VECTOR_SIZE=768

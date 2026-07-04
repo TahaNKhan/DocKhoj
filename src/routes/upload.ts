@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest } from 'fastify';
 import fs from 'fs/promises';
 import fsSync from 'fs';
+import os from 'os';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import type Database from 'better-sqlite3';
@@ -18,7 +19,33 @@ import { truncateForLog, uploadLog as log } from '../utils/logger.js';
 
 type DB = Database.Database;
 
-const UPLOAD_DIR = './documents';
+// UPLOAD_DIR resolution order:
+//   1. process.env.UPLOAD_DIR — honored in api-documents.ts and the
+//      e2e test; upload.ts now respects it too so a single env var
+//      controls the documents root everywhere.
+//   2. $DOCKHOJ_HOME/documents — the in-Docker default. Compose
+//      bind-mounts this path to /app/documents, then sets
+//      UPLOAD_DIR=/app/documents in the container's env, which
+//      wins at rung 1. Outside Docker (npm run dev), DOCKHOJ_HOME
+//      is normally set by restart.sh; if it's unset we fall back
+//      to ~/.dockhoj/documents so the default is the same in
+//      both modes.
+//   3. ~/.dockhoj/documents — the absolute-home fallback.
+//
+// ponytail: in-Docker path resolves to /app/documents only when
+// the compose env is set; the host-side path is irrelevant
+// inside the container because of the bind mount.
+function resolveUploadDir(): string {
+  if (process.env.UPLOAD_DIR) {
+    return path.resolve(process.env.UPLOAD_DIR);
+  }
+  const dockhojHome = process.env.DOCKHOJ_HOME
+    || path.join(os.homedir(), '.dockhoj');
+  return path.join(dockhojHome, 'documents');
+}
+
+// Resolved on every call (not captured at module-load) so tests
+// that set process.env.UPLOAD_DIR after import see the override.
 const BATCH_SIZE = 10;
 
 // Phase 04 / p4-T09 / FR-27 — visibility whitelist. Anything outside
@@ -191,7 +218,7 @@ async function saveUploadedFile(
   const ext = path.extname(fileName).toLowerCase();
   const fileId = uuidv4();
   const internalFileName = `${fileId}${ext}`;
-  const filePath = path.join(UPLOAD_DIR, internalFileName);
+  const filePath = path.join(resolveUploadDir(), internalFileName);
 
   await fs.writeFile(filePath, data.content);
 
@@ -199,7 +226,7 @@ async function saveUploadedFile(
 }
 
 export async function uploadRoutes(fastify: FastifyInstance) {
-  await fs.mkdir(UPLOAD_DIR, { recursive: true });
+  await fs.mkdir(resolveUploadDir(), { recursive: true });
   const db = (fastify as unknown as { db: DB }).db;
 
   // POST /api/upload — single file (FR-25).
@@ -395,7 +422,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
   // existing tests; not in the spec's HTTP table but kept under /api/
   // for convention).
   fastify.get('/api/files', async () => {
-    return fsSync.readdirSync(UPLOAD_DIR).map((s) => ({ filePath: s }));
+    return fsSync.readdirSync(resolveUploadDir()).map((s) => ({ filePath: s }));
   });
 
   log.info('Upload routes registered');
