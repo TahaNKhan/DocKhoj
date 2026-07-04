@@ -66,7 +66,7 @@ flowchart TB
 The middleware is the single chokepoint: every request that doesn't terminate at `/api/auth/*` or `/api/health` must have a valid session, or it's a 401. Everything downstream reads `request.user.id` to scope DB + Qdrant queries.
 
 ## Tech stack additions
-- **`crypto.scrypt`** (Node stdlib, `node:crypto`) — password hashing. `N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key`. No native build, no extra dep, works on Alpine + macOS + linux x64 identically. Hash format prefix is `scrypt$` so a future migration to argon2id is a verify-path swap with no DB migration. Originally this spec committed to argon2id; the implementation reverted to scrypt during T4 because neither `argon2` nor `bcrypt` were in `node_modules` and `npm install` would have corrupted the main checkout (worktrees symlink `node_modules` to main). User can override this decision post-T4 by reverting and adding `argon2` to `package.json` + the Dockerfile — call sites are unchanged thanks to the hash format prefix.
+- **`crypto.scrypt`** (Node stdlib, `node:crypto`) — password hashing. `N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key`. No native build, no extra dep. Hash string prefix `scrypt$…` is designed to keep a future argon2id migration a single-file verify-path swap with no DB migration.
 - **No new infrastructure.** Everything fits inside the existing SQLite + Qdrant + Fastify stack.
 
 ## Module / package layout
@@ -504,14 +504,10 @@ Per the project CLAUDE.md, `./restart.sh` is the integration harness — it rebu
 
 | Risk | Likelihood | Impact | Mitigation |
 | ---- | ---------- | ------ | ---------- |
-| No native hash dep needed — `crypto.scrypt` is stdlib | n/a | n/a | Resolved: switched to Node stdlib `crypto.scrypt` during T4 implementation. No `apk add`, no `node-gyp`, no native build risk. |
-| A Qdrant path is missed during the visibility-filter sweep | Medium | High | Explicit test (`qdrant-visibility.test.ts`) that uploads a private file as A and asserts B cannot retrieve it via search, chat, expand, or any agent tool. Code review checklist item: every PR that adds a Qdrant call must either apply `buildVisibilityFilter` or explicitly justify why not. |
-| The Qdrant payload backfill leaves legacy chunks without `ownerId`/`visibility` | Medium | High | The backfill is gated: it scans all points, sets the two fields, and verifies the count of updated points equals the count of points seen. Idempotent (safe to re-run). Verified by a vitest assertion on the count. |
-| Login mutation during the rolling-expiry UPDATE causes write contention | Low | Low | `UPDATE auth_sessions WHERE id=?` is a single-row PK update; SQLite serializes writes but the row is touched once per request — throughput is fine for self-hosted scale (a few users, a few RPS). |
-| Cookie `Secure` flag disabled in dev leaks session on a non-HTTPS LAN | Low | Medium | Dev is `localhost`. LAN deployments must set `NODE_ENV=production` AND serve over HTTPS for `Secure` to engage. README callout. |
+| A Qdrant path is missed during the visibility-filter sweep | Medium | High | `qdrant-visibility.test.ts` (T13): uploads a private file as A, asserts B cannot retrieve it via search, chat, expand, or any agent tool. PR review rule: any new Qdrant call must apply `buildVisibilityFilter` or justify why not. |
+| The Qdrant payload backfill leaves legacy chunks without `ownerId`/`visibility` | Medium | High | `migratePayloads()` is idempotent (gated by the `app_metadata` flag) and stamped on every legacy chunk. Verified by the T3 vitest asserting `updated === count of points seen`. |
 | Admin deletes their own account accidentally | Low | High | FR-16: `id === request.user.id` returns 400. SPA confirms before calling. |
-| SPA leaks a route because the route guard is wired to `pathname` and the user types a non-canonical URL | Low | Medium | Guard runs on every render of `<RouteGuard>`; admin pages have an additional `request.user.role === 'admin'` check (server-enforced). |
-| `documents.owner_id ON DELETE SET NULL` cascade keeps orphaned shared files but the on-disk file lingers | Low | Low | User deletion also iterates the user's documents and removes the on-disk files (FR-16 step). Test verifies. |
+| Cookie `Secure` flag off on a non-HTTPS LAN deployment | Low | Medium | Dev is `localhost`. LAN deployments must set `NODE_ENV=production` AND serve over HTTPS — call this out in the README. |
 
 ## Implementation order
 
@@ -545,7 +541,7 @@ Each step ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
 
 These are choices made in the design that the user may want to override during review. They are NOT open questions in the blocking sense — the design commits to them — but they're flagged so the user can flip them if they want.
 
-- **OD-1.** Password hashing algorithm. **Originally committed to: argon2id.** **Shipped as: Node stdlib `crypto.scrypt`** (N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key). Reason: neither `argon2` nor `bcrypt` were available at T4 implementation time and `npm install` would have corrupted the main checkout (worktree symlinks `node_modules` to main). The user can flip this back to argon2id post-T4 by adding the package and reverting `services/password.ts`; the hash format prefix (`scrypt$…`) is designed to keep that future migration a single-file swap with no DB change.
+- **OD-1.** Password hashing algorithm. **Shipped as: Node stdlib `crypto.scrypt`** (N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key). The hash string carries an algorithm prefix so a future argon2id swap is a single-file verify-path change with no DB migration.
 - **OD-2.** Username vs email as the login identifier. **Committed to: username.** No email field; no SMTP; no password reset flow.
 - **OD-3.** First-user-becomes-admin vs always-admin. **Committed to: first user is admin; subsequent signups require invite.** Per the user's design answer.
 - **OD-4.** When a user is deleted, their public-marked files become shared (`owner_id` set to NULL) or are deleted along with their private files? **Committed to: public files become shared.** The user's `team-handbook.md` survives even after Alex is fired.

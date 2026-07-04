@@ -25,9 +25,6 @@ CREATE TABLE IF NOT EXISTS users (
   last_login_at TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_users_username
-  ON users (username);
-
 CREATE TABLE IF NOT EXISTS auth_sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,
@@ -37,11 +34,15 @@ CREATE TABLE IF NOT EXISTS auth_sessions (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- ponytail: indexes trimmed to what the design actually queries.
+--   - username + token_hash are UNIQUE → SQLite makes an implicit
+--     index; explicit ones are duplicates.
+--   - There's no auth_sessions expiry sweep in this phase, so an
+--     expires_at index would be speculative.
+--   - Keep `user_id` (used by deleteByUser + 'list my sessions') and
+--     `invites.expires_at` (used by listOutstanding's expiry filter).
 CREATE INDEX IF NOT EXISTS idx_auth_sessions_user_id
   ON auth_sessions (user_id);
-
-CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at
-  ON auth_sessions (expires_at);
 
 CREATE TABLE IF NOT EXISTS invites (
   id TEXT PRIMARY KEY,
@@ -54,9 +55,6 @@ CREATE TABLE IF NOT EXISTS invites (
   FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (used_by) REFERENCES users(id) ON DELETE SET NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_invites_token_hash
-  ON invites (token_hash);
 
 CREATE INDEX IF NOT EXISTS idx_invites_expires_at
   ON invites (expires_at);

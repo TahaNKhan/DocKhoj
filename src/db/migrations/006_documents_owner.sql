@@ -26,8 +26,9 @@ ALTER TABLE documents ADD COLUMN owner_id TEXT REFERENCES users(id) ON DELETE SE
 ALTER TABLE documents ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public'
   CHECK (visibility IN ('public', 'private'));
 
+-- ponytail: documents are queried via Qdrant for content; the SQLite
+-- documents table is only hit for list/delete/download, all of which
+-- filter by owner_id (or owner_id IS NULL for the shared bucket).
+-- An explicit visibility-only index would be speculative.
 CREATE INDEX IF NOT EXISTS idx_documents_owner_id
   ON documents (owner_id);
-
-CREATE INDEX IF NOT EXISTS idx_documents_visibility
-  ON documents (visibility);
