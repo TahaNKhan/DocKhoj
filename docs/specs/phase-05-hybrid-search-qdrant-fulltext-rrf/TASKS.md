@@ -49,7 +49,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - `./restart.sh` boots cleanly; `/api/health` returns `{"status":"ok",...}`.
 - **Dependencies.** T1.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T3. E2E walkthrough + protocol commit
 
@@ -67,7 +67,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - One final commit on `main` references `p5-T03` in the message (e.g. `chore(phase-5): e2e walkthrough + protocol completion (p5-T03)`).
 - **Dependencies.** T2.
 - **Estimate.** S.
-- **Status.** todo.
+- **Status.** done.
 
 ## Dependency graph
 
