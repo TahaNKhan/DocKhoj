@@ -227,6 +227,65 @@ Any other non-`/api/*` path falls back to the SPA's `index.html`.
 
 ---
 
+## Authentication
+
+Phase 04 adds user accounts. Every `/api/*` endpoint **except `/api/auth/*` and `/api/health`** requires a valid session — without one, the server returns `401 {"error":"Authentication required"}`.
+
+### First-run setup
+
+On a fresh install the `users` table is empty. Visit `http://localhost:3001/register`, pick a username and password, and the very first account is created with `role = 'admin'`. Subsequent signups require an invite from the admin (`Admin → Invites → New invite` in the SPA, or `POST /api/admin/invites` over curl).
+
+### Auth endpoints
+
+```bash
+# Register (first user only — returns 403 once any user exists)
+curl -X POST http://localhost:3001/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"taha","password":"correct-horse-battery-staple!"}'
+# -> {"id":"...","username":"taha","role":"admin"} + Set-Cookie: dockhoj_sid=...
+
+# Login (returns 401 with the same message on bad username OR bad password — no enumeration)
+curl -X POST http://localhost:3001/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"taha","password":"..."}'
+
+# Whoami (cookie required — 401 if not signed in)
+curl http://localhost:3001/api/auth/me
+
+# Logout (idempotent — clears the cookie + deletes the server-side session row)
+curl -X POST http://localhost:3001/api/auth/logout
+
+# Accept an invite
+curl -X POST http://localhost:3001/api/auth/invite/accept \
+  -H 'Content-Type: application/json' \
+  -d '{"token":"<invite-token>","username":"alex","password":"..."}'
+
+# Admin only — list users, create / revoke invites
+curl http://localhost:3001/api/admin/users
+curl -X POST http://localhost:3001/api/admin/invites \
+  -H 'Content-Type: application/json' \
+  -d '{"expiresInDays":7}'
+curl -X DELETE http://localhost:3001/api/admin/invites/<id>
+```
+
+The full endpoint table (including `/api/admin/users/:id/password` for admin password resets) lives in the Phase 04 spec: [`requirements.md`](./docs/specs/phase-04-user-accounts-and-private-knowledge/requirements.md), [`design.md`](./docs/specs/phase-04-user-accounts-and-private-knowledge/design.md).
+
+### Cookie & session
+
+The session id rides in an HttpOnly, SameSite=Lax cookie named `dockhoj_sid`. Sessions expire **30 days after the last request** — every authenticated request pushes the expiry forward. To revoke a session, delete the row server-side (logout, admin "force logout", user deletion, or the expiry sweep).
+
+> **Production note — serve over HTTPS.** The cookie's `Secure` flag is **off** when `NODE_ENV=development` and **on** when `NODE_ENV=production`. Browsers will not send a `Secure` cookie over plain HTTP, so a production deployment without HTTPS will fail to keep users logged in. Phase 04 does not terminate TLS itself — front the app with a reverse proxy (Caddy, nginx, Traefik, …) that handles certificates and forwards to the app on `localhost:3001` over plain HTTP internally.
+
+### Passwords
+
+- 12+ characters, at least one non-alphanumeric.
+- Hashed with Node's stdlib `crypto.scrypt` (no native build).
+- The hash string is prefixed `scrypt$…` so a future argon2id swap is a single-file verify-path change with no DB migration.
+
+The ownership / visibility model — every search, chat, and agent-tool query is filtered to "documents this user can see" — is documented in [`design.md`](./docs/specs/phase-04-user-accounts-and-private-knowledge/design.md) §"Visibility filter".
+
+---
+
 ## Breaking changes from Phase 01 → Phase 02
 
 The Phase 02 cutover moved every JSON API under `/api/*`. If you're upgrading from a Phase 01 deployment, your existing scripts and integrations need the following path updates:
@@ -260,6 +319,19 @@ Phase 03 is **mostly additive** (no existing endpoint paths change), but two beh
 2. **Tool calls are streamed live + persisted.** The `/api/chat/stream` SSE envelope gains two new event types (`tool_call`, `tool_result`) on the agentic path. Persisted assistant messages gain a `tool_calls` column (JSON-encoded array). The wire shape for the original events (`meta`, `sources`, `token`, `done`, `title`, `error`) is unchanged.
 
 The non-streaming `/api/chat` endpoint keeps its `expand=none` default and Phase 02 behavior. Phase 03 doesn't run the agent loop on `/api/chat` — only on `/api/chat/stream`.
+
+---
+
+## Behavior changes from Phase 03 → Phase 04
+
+Phase 04 is **mostly additive** (no existing endpoint paths change), but the request surface and the ownership model shift substantially. Read this section carefully if you're upgrading from a Phase 03 deployment.
+
+1. **All `/api/*` endpoints now require auth** — except `/api/health` (the Docker HEALTHCHECK depends on it) and `/api/auth/*` (login, logout, register, me, status, invite/accept). Every other route returns `401 {"error":"Authentication required"}` without a valid `dockhoj_sid` cookie. This includes `/api/status` — the TopBar status indicator now only shows after the user signs in.
+2. **Documents are per-user.** `GET /api/documents` returns only files the requester owns plus files in the shared bucket (legacy `owner_id = NULL` rows). A user cannot list, download, or delete another user's private file — the server returns `404` for all three (same opaque code whether the file is missing or the caller lacks permission, so existence is not leaked).
+3. **Search and chat are scoped.** Every Qdrant query — `/api/search`, `/api/search/rag`, `/api/chat`, `/api/chat/stream`, and all four agent-loop tools (`get_neighbor_chunks`, `get_section_chunks`, `get_chunk`, `get_document`) — carries a `buildVisibilityFilter(viewerId)` clause. The LLM cannot reason its way around the filter: `get_document` with a foreign `fileId` returns "not found".
+4. **Pre-Phase-04 documents become shared; pre-Phase-04 conversations are dropped on migration.** Existing documents get `owner_id = NULL, visibility = 'public'` (visible to every logged-in user; deletable by any logged-in user). Existing conversations and messages are **deleted** at migration time — a clean slate was the user's explicit choice for the new ownership model, so `SELECT COUNT(*) FROM sessions` returns `0` immediately after the upgrade. See [`design.md`](./docs/specs/phase-04-user-accounts-and-private-knowledge/design.md) §"API surface" for the modified-endpoint table.
+
+The SPA gains `/login`, `/register`, `/register/:token`, and (for admins) `/admin/users` + `/admin/invites`. Any visit to `/chat`, `/upload`, or `/admin/*` while unauthenticated redirects to `/login?next=<original-path>`. The first visitor to a fresh install hits `/register`, creates the admin account, and is logged in.
 
 ---
 
