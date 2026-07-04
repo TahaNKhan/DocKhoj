@@ -41,15 +41,17 @@ describe('migrate', () => {
     expect(after).toHaveLength(1);
   });
 
-  it('applies 001_init.sql, 002_title_source.sql, 003_documents.sql, and 004_tool_calls.sql and records all four versions', () => {
+  it('applies all six migrations and records the version set', () => {
     const result = migrate(db);
     expect(result.applied).toContain(1);
     expect(result.applied).toContain(2);
     expect(result.applied).toContain(3);
     expect(result.applied).toContain(4);
+    expect(result.applied).toContain(5);
+    expect(result.applied).toContain(6);
 
     const rows = db.prepare('SELECT id FROM _migrations ORDER BY id').all() as { id: number }[];
-    expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4]);
+    expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5, 6]);
 
     const conversations = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'")
@@ -66,15 +68,37 @@ describe('migrate', () => {
       .all();
     expect(documents).toHaveLength(1);
 
+    const users = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+      .all();
+    expect(users).toHaveLength(1);
+
+    const authSessions = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='auth_sessions'")
+      .all();
+    expect(authSessions).toHaveLength(1);
+
+    const invites = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='invites'")
+      .all();
+    expect(invites).toHaveLength(1);
+
     const cols = db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[];
     expect(cols.map((c) => c.name)).toContain('title_source');
 
     const docCols = db.prepare("PRAGMA table_info(documents)").all() as { name: string }[];
     expect(docCols.map((c) => c.name)).toContain('file_id');
     expect(docCols.map((c) => c.name)).toContain('chunk_count');
+    expect(docCols.map((c) => c.name)).toContain('owner_id');
+    expect(docCols.map((c) => c.name)).toContain('visibility');
 
     const msgCols = db.prepare("PRAGMA table_info(messages)").all() as { name: string }[];
     expect(msgCols.map((c) => c.name)).toContain('tool_calls');
+
+    // documents.visibility defaults to 'public' for legacy rows.
+    db.exec("INSERT INTO documents (file_id, file_name, file_type, bytes) VALUES ('x', 'x', 'md', 1)");
+    const vis = db.prepare("SELECT visibility FROM documents WHERE file_id = 'x'").get() as { visibility: string };
+    expect(vis.visibility).toBe('public');
   });
 
   it('is idempotent — second boot is a no-op', () => {

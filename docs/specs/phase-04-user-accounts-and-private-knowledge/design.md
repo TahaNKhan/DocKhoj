@@ -77,9 +77,9 @@ New files:
 src/
   db/migrations/
     005_users.sql                  -- users + auth_sessions + invites tables
-    005_documents_owner.sql        -- documents.owner_id + visibility
-    005_documents_owner_qdrant.sql -- (data migration) Qdrant payload backfill
-    006_chat_sessions_owner.sql    -- chat_sessions.owner_id + delete legacy rows
+    006_documents_owner.sql        -- documents.owner_id + visibility
+    -- (Qdrant payload backfill is code, not SQL; lives in services/qdrant.ts per T3)
+    007_chat_sessions_owner.sql    -- conversations.owner_id + delete legacy rows
   services/
     user-store.ts        -- UserStore: createUser, findByUsername, updateLastLogin, etc.
     auth-session-store.ts -- AuthSessionStore: create, find, touch, deleteByUser, deleteById
