@@ -347,7 +347,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - README has the new section; `./restart.sh` boots cleanly after the doc changes (no code change in this task).
 - **Dependencies.** T19.
 - **Estimate.** S.
-- **Status.** todo.
+- **Status.** done.
 
 ## T21. Final E2E walkthrough + commit
 
