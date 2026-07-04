@@ -12,6 +12,7 @@ import { sessionRoutes } from './routes/api-sessions.js';
 import { healthRoutes } from './routes/api-health.js';
 import { statusRoutes } from './routes/api-status.js';
 import { documentRoutes } from './routes/api-documents.js';
+import { authRoutes } from './routes/api-auth.js';
 import { initCollection, migratePayloads } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
@@ -100,6 +101,11 @@ export async function buildApp() {
 
   // Phase 03 / p3-T02 — documents list + delete endpoints.
   await fastify.register(documentRoutes);
+
+  // Phase 04 / p4-T06 — /api/auth/{register,login,logout,me,status,invite/accept}.
+  // The authPlugin (above) exempts /api/auth/* already, so these
+  // handlers run without a session check.
+  await fastify.register(authRoutes);
 
   return fastify;
 }

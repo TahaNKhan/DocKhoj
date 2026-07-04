@@ -48,31 +48,30 @@ export const authPlugin: FastifyPluginAsync = fp(async (fastify: FastifyInstance
   const users = new UserStore(db);
 
   fastify.addHook('onRequest', async (request: FastifyRequest, reply) => {
+    // Always attempt to populate request.user from the cookie if a
+    // valid session is present — even on public paths like /api/auth/me
+    // (p4-T06: GET /me should return the user when a valid cookie
+    // exists, 401 otherwise). The "401 if no session" gate only
+    // applies to protected paths.
+    const sid = parseCookieSid(request.headers.cookie);
+    if (sid) {
+      const session = sessions.findById(sid);
+      if (session) {
+        const user = users.findById(session.userId);
+        if (user) {
+          request.user = { id: user.id, username: user.username, role: user.role };
+          // Rolling-window refresh; fire-and-forget — a touch() failure
+          // shouldn't take down the request.
+          sessions.touch(sid);
+        }
+      }
+    }
+
     if (isPublic(request.url)) return;
 
-    const sid = parseCookieSid(request.headers.cookie);
-    if (!sid) {
+    if (!request.user) {
       reply.code(401).send({ error: 'Authentication required' });
       return reply;
     }
-
-    const session = sessions.findById(sid);
-    if (!session) {
-      reply.code(401).send({ error: 'Authentication required' });
-      return reply;
-    }
-
-    const user = users.findById(session.userId);
-    if (!user) {
-      // FK target vanished (e.g. user deleted between create + lookup)
-      // — treat as no session.
-      reply.code(401).send({ error: 'Authentication required' });
-      return reply;
-    }
-
-    request.user = { id: user.id, username: user.username, role: user.role };
-    // Rolling-window refresh; fire-and-forget — a touch() failure
-    // shouldn't take down the request.
-    sessions.touch(sid);
   });
 });
