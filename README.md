@@ -227,6 +227,7 @@ DocKhoj is single-tenant and per-user.
 | `npm start` | Run the compiled server (`dist/index.js`) |
 | `npm test` | All vitest projects |
 | `npm run coverage` | `vitest run --coverage`; thresholds fail the run |
+| `npm run reset-admin-account` | Reset a locked-out admin's username + password (DB-side, no auth bypass) |
 | `./restart.sh` | Default: rebuild + recreate only the `app` container |
 | `./restart.sh --full` | Tear everything down, rebuild from scratch with `--no-cache` |
 
@@ -282,6 +283,26 @@ tests/               vitest (node project) — parser, services, routes, db, e2e
 ### Switching embedding models
 
 Change `EMBEDDING_MODEL` in `.env` to any Ollama embedding model (e.g. `bge-m3`, `mxbai-embed-large`). Update `VECTOR_SIZE` to match the model's output dimension — otherwise the Qdrant collection is recreated with the wrong size and existing embeddings are lost. Back up `$DOCKHOJ_HOME/qdrant/` before changing.
+
+### Recovering a lost admin account
+
+If the admin's password is lost (e.g. you ran the E2E test suite, which creates an admin with a generated password), `npm run reset-admin-account` walks you through a credential reset — rename the admin and set a new password, and wipe all their sessions so any cached cookie stops working. **Documents, conversations, and invites are preserved.**
+
+```bash
+# Stop the app so it isn't holding the SQLite write lock.
+docker compose stop app
+
+# Interactive — lists every admin, you pick one, prompts for new username + password.
+npm run reset-admin-account
+
+# Non-interactive (scriptable):
+npm run reset-admin-account -- --user alice --new-username alicia --new-password 'correct-horse-battery-staple!'
+
+# Bring the app back up.
+docker compose start app
+```
+
+DB path resolution (in order): `$SQLITE_PATH` → `$DOCKHOJ_HOME/db/conversations.db` → `~/.dockhoj/db/conversations.db`. Override with `--db <path>`.
 
 ### Tests
 

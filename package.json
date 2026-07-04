@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "setup-ollama": "ollama pull nomic-embed-text"
+    "setup-ollama": "ollama pull nomic-embed-text",
+    "reset-admin-account": "tsx scripts/reset-admin-account.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
