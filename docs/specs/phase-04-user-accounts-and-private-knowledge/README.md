@@ -1,8 +1,8 @@
 # Phase 04 — User Accounts and Private Knowledge
 
-**Status:** in-progress
+**Status:** done
 **Started:** 2026-07-03
-**Done:**
+**Done:** 2026-07-04
 
 ## Isolation
 - **Branch:** `phase/04-user-accounts-and-private-knowledge` (proposed — large architectural phase, multi-day, auth + schema + SPA)

@@ -137,7 +137,7 @@ The phase is complete when:
 3. A second user, registered via an invite link, can log in and use the app.
 4. The first user can list, create, and revoke invites.
 5. User A uploads a private file; user B's `/api/search`, `/api/chat`, and `POST /api/chat/stream` cannot retrieve its chunks or surface it in their document list.
-6. User A marks a file public; user B sees it in their documents list and can delete it.
+6. User A marks a file public; user B can find its chunks via `/api/search` and `/api/chat` (per FR-32 / FR-38, visibility='public' is shared-after-search), but the file does NOT appear in B's `/api/documents` list and B cannot delete it (per FR-34 / FR-35, the documents inventory only surfaces "files I own + owner_id IS NULL"; the only way to share a file across all users in Phase 04 is via the legacy owner_id=NULL state, which has no UI).
 7. User B cannot delete user A's private file (gets 404).
 8. Logging out invalidates the session server-side; the cleared cookie cannot be replayed.
 9. Existing pre-Phase-04 documents appear as shared files in every user's documents list.

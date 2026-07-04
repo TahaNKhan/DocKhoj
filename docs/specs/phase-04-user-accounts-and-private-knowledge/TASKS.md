@@ -361,7 +361,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - The branch is committed; no uncommitted work; commit messages reference the task IDs (e.g. `feat(phase-4): register + login routes (p4-T06)`).
 - **Dependencies.** T20.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## Dependency graph
 
