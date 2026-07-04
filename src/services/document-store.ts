@@ -14,6 +14,12 @@ type DB = Database.Database;
 // HH:MM:SS` UTC). Returned as opaque strings; the SPA formats for
 // display.
 
+// Phase 04 / p4-T10 / FR-34 — ownerId + ownerUsername + visibility are
+// populated by `list()` (via JOIN on users) and `get()` /
+// `getByFileName()`. They're null/undefined for shared (owner_id IS
+// NULL) legacy rows. The route handler in api-documents.ts sends
+// them straight through to the SPA — Upload.tsx uses them to render
+// the chip, DocumentsList.tsx uses them to render the Owner column.
 export interface DocumentRow {
   fileId: string;
   fileName: string;
@@ -21,6 +27,9 @@ export interface DocumentRow {
   bytes: number;
   uploadedAt: string;
   chunkCount: number;
+  ownerId: string | null;
+  ownerUsername: string | null;
+  visibility: 'public' | 'private';
 }
 
 interface DocumentDbRow {
@@ -30,6 +39,9 @@ interface DocumentDbRow {
   bytes: number;
   uploaded_at: string;
   chunk_count: number;
+  owner_id: string | null;
+  owner_username: string | null;
+  visibility: string;
 }
 
 // Phase 04 / p4-T07 / FR-16 — shape used by the admin "delete user"
@@ -87,27 +99,43 @@ export class DocumentStore {
       );
   }
 
-  /** All documents, most-recently-uploaded first. Empty array if
-   *  the table is empty (not null — keeps the SPA's `length === 0`
-   *  branch simple). */
-  list(): DocumentRow[] {
+  /** All documents the viewer can see, most-recently-uploaded first.
+   *  Empty array if the viewer has no documents (not null — keeps
+   *  the SPA's `length === 0` branch simple). The WHERE clause is
+   *  the same predicate used by the /api/documents HTTP route per
+   *  FR-34: `owner_id = viewerId OR owner_id IS NULL`. The LEFT JOIN
+   *  onto `users` populates `ownerUsername` (null for shared rows).
+   *  `count()` is left alone — T15 turns it into a viewer-scoped
+   *  variant for /api/status. */
+  list(viewerId: string): DocumentRow[] {
     const rows = this.db
       .prepare(
-        `SELECT file_id, file_name, file_type, bytes, uploaded_at, chunk_count
-         FROM documents
-         ORDER BY uploaded_at DESC, file_id DESC`
+        `SELECT d.file_id, d.file_name, d.file_type, d.bytes,
+                d.uploaded_at, d.chunk_count,
+                d.owner_id, u.username AS owner_username, d.visibility
+         FROM documents d
+         LEFT JOIN users u ON u.id = d.owner_id
+         WHERE d.owner_id = ? OR d.owner_id IS NULL
+         ORDER BY d.uploaded_at DESC, d.file_id DESC`
       )
-      .all() as DocumentDbRow[];
+      .all(viewerId) as DocumentDbRow[];
     return rows.map(toDocumentRow);
   }
 
   /** Look up a single row by fileId. Used by the DELETE route
-   *  handler to recover the on-disk filename before unlinking. */
+   *  handler to recover the on-disk filename before unlinking, and
+   *  by download.ts to authorize the request before streaming.
+   *  Returns ownership fields so the caller can enforce FR-35/36
+   *  (foreign files → 404). */
   get(fileId: string): DocumentRow | null {
     const row = this.db
       .prepare(
-        `SELECT file_id, file_name, file_type, bytes, uploaded_at, chunk_count
-         FROM documents WHERE file_id = ?`
+        `SELECT d.file_id, d.file_name, d.file_type, d.bytes,
+                d.uploaded_at, d.chunk_count,
+                d.owner_id, u.username AS owner_username, d.visibility
+         FROM documents d
+         LEFT JOIN users u ON u.id = d.owner_id
+         WHERE d.file_id = ?`
       )
       .get(fileId) as DocumentDbRow | undefined;
     return row ? toDocumentRow(row) : null;
@@ -122,9 +150,13 @@ export class DocumentStore {
   getByFileName(fileName: string): DocumentRow | null {
     const row = this.db
       .prepare(
-        `SELECT file_id, file_name, file_type, bytes, uploaded_at, chunk_count
-         FROM documents WHERE file_name = ?
-         ORDER BY uploaded_at DESC, file_id DESC
+        `SELECT d.file_id, d.file_name, d.file_type, d.bytes,
+                d.uploaded_at, d.chunk_count,
+                d.owner_id, u.username AS owner_username, d.visibility
+         FROM documents d
+         LEFT JOIN users u ON u.id = d.owner_id
+         WHERE d.file_name = ?
+         ORDER BY d.uploaded_at DESC, d.file_id DESC
          LIMIT 1`
       )
       .get(fileName) as DocumentDbRow | undefined;
@@ -182,5 +214,8 @@ function toDocumentRow(r: DocumentDbRow): DocumentRow {
     bytes: r.bytes,
     uploadedAt: r.uploaded_at,
     chunkCount: r.chunk_count,
+    ownerId: r.owner_id,
+    ownerUsername: r.owner_username,
+    visibility: r.visibility as 'public' | 'private',
   };
 }

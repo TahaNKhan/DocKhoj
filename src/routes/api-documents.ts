@@ -13,6 +13,16 @@ type DB = Database.Database;
 //   GET    /api/documents          → list (FR-3, U13)
 //   DELETE /api/documents/:fileId  → delete (FR-4, FR-5, U14, U15)
 //
+// Phase 04 / p4-T10 — Visibility scoping.
+//
+//   GET    returns only documents the requester can see:
+//          owner_id = request.user.id OR owner_id IS NULL (FR-34).
+//          Response shape gains `ownerUsername` + `visibility`.
+//   DELETE returns 404 unless the requester owns the file or it's
+//          shared (FR-35). The 404 (not 403) is intentional: it
+//          keeps the response opaque so a user can't enumerate
+//          another user's file ids.
+//
 // Delete order (FR-5):
 //   1. Qdrant filter delete — failure aborts. Disk + SQLite untouched.
 //   2. File unlink — best-effort. ENOENT is fine; logged at debug.
@@ -31,9 +41,10 @@ export const documentRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
   const db = (fastify as unknown as { db: DB }).db;
   const store = new DocumentStore(db);
 
-  // GET /api/documents — list all uploaded documents, most-recent first.
-  fastify.get('/api/documents', async () => {
-    return { documents: store.list() };
+  // GET /api/documents — list documents the requester can see, most-recent first.
+  fastify.get('/api/documents', async (request) => {
+    const viewerId = request.user!.id;
+    return { documents: store.list(viewerId) };
   });
 
   // DELETE /api/documents/:fileId — remove a single document (FR-4).
@@ -41,6 +52,7 @@ export const documentRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
     '/api/documents/:fileId',
     async (request, reply) => {
       const { fileId } = request.params;
+      const viewerId = request.user!.id;
 
       // Step 0: validate fileId shape. Same regex as the sessionId
       // validator — keeps the on-disk path join() safe regardless
@@ -52,6 +64,16 @@ export const documentRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
       // Step 1: look up the row.
       const row = store.get(fileId);
       if (!row) {
+        return reply.status(404).send({ error: 'Document not found' });
+      }
+
+      // Phase 04 / p4-T10 / FR-35 — ownership check. Foreign files
+      // (owned by another user) look identical to a missing file
+      // (404, not 403) so the endpoint can't be used to enumerate
+      // other users' file ids.
+      const isOwn = row.ownerId === viewerId;
+      const isShared = row.ownerId === null;
+      if (!isOwn && !isShared) {
         return reply.status(404).send({ error: 'Document not found' });
       }
 

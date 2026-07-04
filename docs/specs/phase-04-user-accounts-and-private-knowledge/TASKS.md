@@ -180,7 +180,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Vitest tests for each.
 - **Dependencies.** T9.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T11. Search + chat visibility
 

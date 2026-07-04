@@ -3,15 +3,19 @@ import Database from 'better-sqlite3';
 import { migrate } from '../../src/db/migrate.js';
 import { DocumentStore, type InsertDocument } from '../../src/services/document-store.js';
 
-// p3-T01 tests — DocumentStore CRUD against an in-memory DB. Covers
-// the FR-1 / FR-2 / FR-7 acceptance: insert on upload, list in
-// uploaded_at DESC order, idempotent delete, get-by-id, count for
-// /api/status.
-// p4-T09 added owner_id + visibility to the insert payload. These
-// CRUD tests don't care about the new fields — they just need the
-// NOT NULL columns populated. `row` builds a payload with a
-// nullable owner + a default 'public' visibility, so each `insert`
-// call can spread it and override only the per-test fields.
+// p3-T01 + p4-T10 tests — DocumentStore CRUD against an in-memory DB.
+// Covers:
+//   - FR-1 / FR-2 / FR-7 acceptance: insert on upload, list in
+//     uploaded_at DESC order, idempotent delete, get-by-id, count.
+//   - p4-T09: owner_id + visibility on insert.
+//   - p4-T10: list(viewerId) scoping + ownerUsername populated via JOIN.
+//   - p4-T10: get / getByFileName now return ownerId + ownerUsername +
+//     visibility fields.
+//
+// `row` builds a payload with a nullable owner + a default 'public'
+// visibility, so each `insert` call can spread it and override only
+// the per-test fields. The two user ids (alice, bob) are seeded
+// up-front so the ownership-JOIN tests can populate ownerUsername.
 
 function row(overrides: Partial<InsertDocument>): InsertDocument {
   return {
@@ -27,15 +31,35 @@ function row(overrides: Partial<InsertDocument>): InsertDocument {
   };
 }
 
+import { UserStore } from '../../src/services/user-store.js';
+
 describe('DocumentStore', () => {
   let db: ReturnType<typeof Database>;
   let store: DocumentStore;
+  let aliceId: string;
+  let bobId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     migrate(db);
     store = new DocumentStore(db);
+
+    const users = new UserStore(db);
+    aliceId = (
+      await users.createUser({
+        username: 'alice',
+        password: 'alice-pass-123!',
+        role: 'user',
+      })
+    ).id;
+    bobId = (
+      await users.createUser({
+        username: 'bob',
+        password: 'bob-pass-123!',
+        role: 'user',
+      })
+    ).id;
   });
 
   afterEach(() => {
@@ -49,6 +73,8 @@ describe('DocumentStore', () => {
         fileName: 'notes.md',
         bytes: 1024,
         chunkCount: 12,
+        ownerId: aliceId,
+        visibility: 'private',
       })
     );
 
@@ -60,6 +86,24 @@ describe('DocumentStore', () => {
       bytes: 1024,
       uploadedAt: '2026-07-01 10:00:00',
       chunkCount: 12,
+      ownerId: aliceId,
+      ownerUsername: 'alice',
+      visibility: 'private',
+    });
+  });
+
+  it('shared rows (owner_id IS NULL) round-trip with ownerId=null + ownerUsername=null', () => {
+    store.insert(row({ fileId: 'shared', fileName: 'shared.md' }));
+    expect(store.get('shared')).toEqual({
+      fileId: 'shared',
+      fileName: 'shared.md',
+      fileType: 'md',
+      bytes: 0,
+      uploadedAt: '2026-07-01 10:00:00',
+      chunkCount: 0,
+      ownerId: null,
+      ownerUsername: null,
+      visibility: 'public',
     });
   });
 
@@ -71,18 +115,39 @@ describe('DocumentStore', () => {
   });
 
   it('list returns rows in uploaded_at DESC order', async () => {
-    store.insert(row({ fileId: 'a', fileName: 'a.md' }));
+    store.insert(row({ fileId: 'a', fileName: 'a.md', ownerId: aliceId }));
     await sleep(SECOND);
-    store.insert(row({ fileId: 'b', fileName: 'b.md', uploadedAt: '2026-07-01 10:00:01' }));
+    store.insert(row({ fileId: 'b', fileName: 'b.md', uploadedAt: '2026-07-01 10:00:01', ownerId: aliceId }));
     await sleep(SECOND);
-    store.insert(row({ fileId: 'c', fileName: 'c.md', uploadedAt: '2026-07-01 10:00:02' }));
+    store.insert(row({ fileId: 'c', fileName: 'c.md', uploadedAt: '2026-07-01 10:00:02', ownerId: aliceId }));
 
-    const ids = store.list().map((r) => r.fileId);
+    const ids = store.list(aliceId).map((r) => r.fileId);
     expect(ids).toEqual(['c', 'b', 'a']);
   });
 
   it('list returns [] when the table is empty', () => {
-    expect(store.list()).toEqual([]);
+    expect(store.list(aliceId)).toEqual([]);
+  });
+
+  it('list(viewerId) only returns documents the viewer can see (own + shared)', () => {
+    store.insert(row({ fileId: 'alice-private', fileName: 'a1.md', ownerId: aliceId, visibility: 'private' }));
+    store.insert(row({ fileId: 'alice-public', fileName: 'a2.md', ownerId: aliceId, visibility: 'public' }));
+    store.insert(row({ fileId: 'bob-private', fileName: 'b1.md', ownerId: bobId, visibility: 'private' }));
+    store.insert(row({ fileId: 'bob-public', fileName: 'b2.md', ownerId: bobId, visibility: 'public' }));
+    store.insert(row({ fileId: 'shared', fileName: 'shared.md', ownerId: null, visibility: 'public' }));
+
+    // Alice sees her own files + shared; not bob's private file.
+    const aliceIds = store.list(aliceId).map((r) => r.fileId).sort();
+    expect(aliceIds).toEqual(['alice-private', 'alice-public', 'shared']);
+
+    // Bob sees his own files + shared; not alice's private file.
+    const bobIds = store.list(bobId).map((r) => r.fileId).sort();
+    expect(bobIds).toEqual(['bob-private', 'bob-public', 'shared']);
+  });
+
+  it('get populates ownerUsername via the users JOIN', () => {
+    store.insert(row({ fileId: 'by-alice', fileName: 'a.md', ownerId: aliceId, visibility: 'private' }));
+    expect(store.get('by-alice')?.ownerUsername).toBe('alice');
   });
 
   it('get returns null for an unknown fileId', () => {
@@ -90,7 +155,7 @@ describe('DocumentStore', () => {
   });
 
   it('delete removes the row and returns true', () => {
-    store.insert(row({ fileId: 'gone', fileName: 'gone.md' }));
+    store.insert(row({ fileId: 'gone', fileName: 'gone.md', ownerId: aliceId }));
     expect(store.get('gone')).not.toBeNull();
     expect(store.delete('gone')).toBe(true);
     expect(store.get('gone')).toBeNull();
@@ -102,9 +167,9 @@ describe('DocumentStore', () => {
 
   it('count reflects the number of rows', () => {
     expect(store.count()).toBe(0);
-    store.insert(row({ fileId: 'a', fileName: 'a.md' }));
+    store.insert(row({ fileId: 'a', fileName: 'a.md', ownerId: aliceId }));
     expect(store.count()).toBe(1);
-    store.insert(row({ fileId: 'b', fileName: 'b.md', uploadedAt: '2026-07-01 10:00:01' }));
+    store.insert(row({ fileId: 'b', fileName: 'b.md', uploadedAt: '2026-07-01 10:00:01', ownerId: aliceId }));
     expect(store.count()).toBe(2);
     store.delete('a');
     expect(store.count()).toBe(1);
@@ -112,16 +177,15 @@ describe('DocumentStore', () => {
 
   it('handles two uploads of the same original filename with distinct fileIds', () => {
     store.insert(
-      row({ fileId: 'file-1', fileName: 'notes.md', bytes: 100, chunkCount: 5 })
+      row({ fileId: 'file-1', fileName: 'notes.md', bytes: 100, chunkCount: 5, ownerId: aliceId })
     );
     store.insert(
-      row({ fileId: 'file-2', fileName: 'notes.md', bytes: 200, chunkCount: 7, uploadedAt: '2026-07-01 10:00:01' })
+      row({ fileId: 'file-2', fileName: 'notes.md', bytes: 200, chunkCount: 7, uploadedAt: '2026-07-01 10:00:01', ownerId: aliceId })
     );
 
-    const list = store.list();
+    const list = store.list(aliceId);
     expect(list).toHaveLength(2);
     expect(list.map((r) => r.fileId).sort()).toEqual(['file-1', 'file-2']);
-    // Deleting one must not affect the other.
     expect(store.delete('file-1')).toBe(true);
     expect(store.get('file-2')).not.toBeNull();
     expect(store.get('file-1')).toBeNull();
