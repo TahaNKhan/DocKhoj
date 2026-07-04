@@ -83,7 +83,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - A vitest integration test asserts that a request with a malformed cookie gets 401, with a real session cookie gets `request.user` populated, and the `last_seen_at` is updated.
 - **Dependencies.** T4.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T6. /api/auth/* routes
 
