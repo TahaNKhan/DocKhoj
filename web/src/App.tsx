@@ -2,8 +2,13 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Route, Switch, Redirect, useLocation } from 'wouter-preact';
 import { TopBar } from './components/TopBar';
 import { Sidebar } from './components/Sidebar';
+import { RouteGuard } from './components/RouteGuard';
 import { Chat, type PendingTurn } from './routes/Chat';
 import { Upload } from './routes/Upload';
+import { Login } from './routes/Login';
+import { Register } from './routes/Register';
+import { InviteAccept } from './routes/InviteAccept';
+import { AuthProvider, useAuth } from './hooks/useAuth';
 import {
   listSessions,
   getSession,
@@ -18,6 +23,7 @@ import {
 } from './services/sessions';
 import { openChatStream, type StreamSource } from './services/stream';
 import { fetchStatus, type ServerStatus } from './services/status';
+import { fetchAuthStatus } from './services/auth';
 import type { Source } from './components/Bubble';
 import type { ToolCallRecord } from './types';
 
@@ -28,8 +34,22 @@ import type { ToolCallRecord } from './types';
 //
 // Upload is a single-column route, so on /upload the Sidebar is
 // omitted from <main> entirely — no `display: none` games.
+//
+// p4-T16: AuthProvider is mounted at the top so every page can read
+// the auth state. The initial `/` route is a small redirector
+// (RootRedirect) that reads useAuth and decides where to send the
+// user: authenticated → /chat; else first-user-available → /register;
+// else /login.
 
 export function App() {
+  return (
+    <AuthProvider>
+      <Chrome />
+    </AuthProvider>
+  );
+}
+
+function Chrome() {
   const [location] = useLocation();
   const isChatRoute = location === '/' || location.startsWith('/chat');
 
@@ -278,20 +298,32 @@ export function App() {
 
   const activeSession = sessions.find((s) => s.id === activeId) ?? null;
 
+  // The TopBar + <main> chrome is only painted for auth-required
+  // routes. The login / register pages render their own layout and
+  // don't want the TopBar's pill row (no session to show anyway).
+  const isAuthPage =
+    location === '/login' ||
+    location === '/register' ||
+    location.startsWith('/register/');
+
   return (
     <>
-      <div class="aurora" aria-hidden="true" />
-      <div class="grain" aria-hidden="true" />
-      <div class="grid-overlay" aria-hidden="true" />
+      {!isAuthPage && (
+        <>
+          <div class="aurora" aria-hidden="true" />
+          <div class="grain" aria-hidden="true" />
+          <div class="grid-overlay" aria-hidden="true" />
 
-      <TopBar
-        sidebarOpen={sidebarOpen}
-        onToggleSidebar={() => setSidebarOpen((v) => !v)}
-        status={status}
-      />
+          <TopBar
+            sidebarOpen={sidebarOpen}
+            onToggleSidebar={() => setSidebarOpen((v) => !v)}
+            status={status}
+          />
+        </>
+      )}
 
-      <main class={isChatRoute ? 'layout' : ''}>
-        {isChatRoute && (
+      <main class={!isAuthPage && isChatRoute ? 'layout' : ''}>
+        {!isAuthPage && isChatRoute && (
           <>
             <Sidebar
               sessions={sessions}
@@ -316,23 +348,71 @@ export function App() {
 
         <Switch>
           <Route path="/">
-            <Redirect to="/chat" />
+            <RootRedirect />
+          </Route>
+          <Route path="/login">
+            <Login />
+          </Route>
+          <Route path="/register">
+            <Register />
+          </Route>
+          <Route path="/register/:token">
+            <InviteAccept />
           </Route>
           <Route path="/chat">
-            <Chat
-              activeSession={activeSession}
-              loading={loading}
-              messages={messages}
-              pending={pending}
-              onSubmit={handleSubmit}
-              status={status}
-            />
+            <RouteGuard>
+              <Chat
+                activeSession={activeSession}
+                loading={loading}
+                messages={messages}
+                pending={pending}
+                onSubmit={handleSubmit}
+                status={status}
+              />
+            </RouteGuard>
           </Route>
           <Route path="/upload">
-            <Upload />
+            <RouteGuard>
+              <Upload />
+            </RouteGuard>
           </Route>
         </Switch>
       </main>
     </>
   );
+}
+
+// RootRedirect — the SPA's initial `/` route. Reads useAuth and
+// sends the visitor to /chat (authenticated) or /register
+// (first-user) or /login (everything else).
+function RootRedirect() {
+  const { user, status } = useAuth();
+  const [firstUserAvailable, setFirstUserAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (status !== 'anonymous') return;
+    let cancelled = false;
+    fetchAuthStatus()
+      .then((s) => {
+        if (!cancelled) setFirstUserAvailable(s.firstUserAvailable);
+      })
+      .catch(() => {
+        if (!cancelled) setFirstUserAvailable(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
+  if (status === 'loading') return null;
+
+  if (status === 'authenticated' && user) {
+    return <Redirect to="/chat" />;
+  }
+
+  if (firstUserAvailable === null) {
+    return <div class="route-loading">Loading…</div>;
+  }
+
+  return <Redirect to={firstUserAvailable ? '/register' : '/login'} />;
 }

@@ -1,0 +1,223 @@
+/* Auth pages — Login / Register / InviteAccept. Single column,
+   centered card, brand mark at the top. Visually consistent with
+   the chat/upload design tokens but no TopBar / sidebar / aurora —
+   those chrome elements are only painted on auth-required routes. */
+
+.auth-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow-y: auto;
+  position: relative;
+  z-index: 2;
+  background:
+    radial-gradient(38% 28% at 14% 8%, rgba(226, 85, 64, 0.18), transparent 60%),
+    radial-gradient(32% 24% at 88% 12%, rgba(240, 138, 110, 0.10), transparent 60%),
+    radial-gradient(55% 42% at 50% 115%, rgba(226, 85, 64, 0.12), transparent 60%);
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  padding: 40px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.auth-card .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+  font-family: var(--f-display);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--cream);
+  letter-spacing: -0.01em;
+}
+
+.auth-card .brand-mark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 4px 14px rgba(226, 85, 64, 0.4);
+  display: inline-block;
+}
+
+.auth-card .brand-name i {
+  color: var(--accent);
+  font-style: italic;
+}
+
+.auth-card .auth-eyebrow {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 10px;
+}
+
+.auth-card h1 {
+  font-family: var(--f-display);
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--cream);
+  margin-bottom: 8px;
+  line-height: 1.1;
+}
+
+.auth-card .auth-sub {
+  color: var(--fg-soft);
+  font-size: 14px;
+  line-height: 1.55;
+  margin-bottom: 24px;
+}
+
+.auth-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.auth-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.auth-card input {
+  font-family: var(--f-body);
+  font-size: 15px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  outline: 0;
+  transition: 0.18s;
+}
+
+.auth-card input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.auth-card .auth-hint {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.auth-card .auth-error {
+  padding: 10px 14px;
+  border-radius: var(--r);
+  background: rgba(226, 85, 64, 0.12);
+  border: 1px solid rgba(226, 85, 64, 0.35);
+  color: var(--cream);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.auth-card .auth-submit {
+  margin-top: 6px;
+  padding: 13px 18px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--cream);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  transition: 0.2s;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(226, 85, 64, 0.35);
+}
+
+.auth-card .auth-submit:hover:not(:disabled) {
+  transform: translateX(2px);
+  box-shadow: 0 6px 20px rgba(226, 85, 64, 0.45);
+}
+
+.auth-card .auth-submit:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.auth-card .auth-foot {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+
+.auth-card .auth-foot a {
+  color: var(--accent);
+  transition: 0.15s;
+}
+
+.auth-card .auth-foot a:hover {
+  color: var(--accent-2);
+}
+
+.auth-card .auth-foot .muted {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* RouteGuard placeholders */
+.route-loading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.route-denied {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.route-denied h1 {
+  font-family: var(--f-display);
+  font-size: 48px;
+  font-weight: 500;
+  color: var(--accent);
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.route-denied p {
+  color: var(--fg-soft);
+  font-size: 15px;
+}
