@@ -6,7 +6,8 @@ type DB = Database.Database;
 // messages. Replaces the Phase 01 in-memory Map; survives container
 // restarts (per FR-7, U3, U8).
 //
-// Schema: see src/db/migrations/001_init.sql and 002_title_source.sql.
+// Schema: see src/db/migrations/001_init.sql, 002_title_source.sql,
+// and 007_chat_sessions_owner.sql.
 //
 // Conventions:
 // - Timestamps are stored as SQLite TEXT ('YYYY-MM-DD HH:MM:SS' UTC).
@@ -26,6 +27,12 @@ export interface Conversation {
   createdAt: string;
   updatedAt: string;
   messageCount: number;
+  // Phase 04 / p4-T14 / FR-41..44 — owning user. NULL for sessions
+  // created by code paths that don't thread the viewer id yet
+  // (the /api/chat* routes, which pick this up in p4-T11). The route
+  // handlers use this to scope reads + writes to the authenticated
+  // viewer; the SPA never reads it directly.
+  ownerId: string | null;
 }
 
 export interface Message {
@@ -69,22 +76,25 @@ export class ConversationStore {
 
   // ----- Conversations -----
 
-  list(): Conversation[] {
+  list(ownerId: string): Conversation[] {
     const rows = this.db
       .prepare(
         `SELECT c.id, c.title, c.title_source, c.created_at, c.updated_at,
+                c.owner_id,
                 COUNT(m.id) AS message_count
          FROM conversations c
          LEFT JOIN messages m ON m.conversation_id = c.id
+         WHERE c.owner_id = ?
          GROUP BY c.id
          ORDER BY c.updated_at DESC`
       )
-      .all() as Array<{
+      .all(ownerId) as Array<{
       id: string;
       title: string;
       title_source: string;
       created_at: string;
       updated_at: string;
+      owner_id: string | null;
       message_count: number;
     }>;
     return rows.map((r) => ({
@@ -94,6 +104,7 @@ export class ConversationStore {
       createdAt: r.created_at,
       updatedAt: r.updated_at,
       messageCount: r.message_count,
+      ownerId: r.owner_id,
     }));
   }
 
@@ -101,6 +112,7 @@ export class ConversationStore {
     const row = this.db
       .prepare(
         `SELECT c.id, c.title, c.title_source, c.created_at, c.updated_at,
+                c.owner_id,
                 COUNT(m.id) AS message_count
          FROM conversations c
          LEFT JOIN messages m ON m.conversation_id = c.id
@@ -114,6 +126,7 @@ export class ConversationStore {
           title_source: string;
           created_at: string;
           updated_at: string;
+          owner_id: string | null;
           message_count: number;
         }
       | undefined;
@@ -125,16 +138,23 @@ export class ConversationStore {
       createdAt: row.created_at,
       updatedAt: row.updated_at,
       messageCount: row.message_count,
+      ownerId: row.owner_id,
     };
   }
 
-  create(): Conversation {
+  // Phase 04 / p4-T14 / FR-42: stamps owner_id (or NULL when the caller
+  // passes null — legacy chat-route paths that haven't been threaded
+  // with the viewer id yet, picked up by p4-T11). Defaults to null so
+  // existing callers that pre-date the column don't need to be
+  // touched.
+  create(ownerId: string | null = null): Conversation {
     const id = uuidv4();
     this.db
       .prepare(
-        `INSERT INTO conversations (id, title, title_source) VALUES (?, 'New chat', 'default')`
+        `INSERT INTO conversations (id, title, title_source, owner_id)
+         VALUES (?, 'New chat', 'default', ?)`
       )
-      .run(id);
+      .run(id, ownerId);
     return this.get(id)!;
   }
 

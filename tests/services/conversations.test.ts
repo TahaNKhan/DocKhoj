@@ -2,20 +2,34 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../../src/db/migrate.js';
 import { ConversationStore } from '../../src/services/conversations.js';
+import { UserStore } from '../../src/services/user-store.js';
 
 // p2-T06 tests — ConversationStore against an in-memory DB. Covers the
 // FR-56 acceptance: CRUD paths, message ordering, cascade delete,
 // setGeneratedTitle rejecting overwrite of user-renamed titles,
 // updatedAt bump on append.
+//
+// Phase 04 / p4-T14 — owner_id on conversations. Each test gets two
+// real users (so the FK owner_id REFERENCES users(id) constraint is
+// satisfied) plus their ids bound inside the describe block.
 
 describe('ConversationStore', () => {
   let db: ReturnType<typeof Database>;
   let store: ConversationStore;
+  let aliceId: string;
+  let bobId: string;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     db = new Database(':memory:');
     db.pragma('foreign_keys = ON');
     migrate(db);
+    // createUser hashes a password we don't care about; the fixtures
+    // here just need real `users.id` rows so owner_id FKs succeed.
+    const users = new UserStore(db);
+    await users.createUser({ username: 'alice', password: 'pw-alice-123!', role: 'user' });
+    await users.createUser({ username: 'bob', password: 'pw-bob-123!', role: 'user' });
+    aliceId = users.findByUsername('alice')!.id;
+    bobId = users.findByUsername('bob')!.id;
     store = new ConversationStore(db);
   });
 
@@ -25,33 +39,54 @@ describe('ConversationStore', () => {
 
   describe('conversations', () => {
     it('creates a session with default title and a UUID id', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       expect(s.id).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
       expect(s.title).toBe('New chat');
       expect(s.titleSource).toBe('default');
       expect(s.messageCount).toBe(0);
+      expect(s.ownerId).toBe(aliceId);
     });
 
-    it('list returns sessions in updated_at DESC order', async () => {
-      const a = store.create();
+    it('list returns sessions in updated_at DESC order, scoped to owner', async () => {
+      const a = store.create(aliceId);
       await sleep(SECOND);
-      const b = store.create();
+      const b = store.create(aliceId);
       await sleep(SECOND);
-      const c = store.create();
+      const c = store.create(aliceId);
       await sleep(SECOND);
       // touch c to make it most-recently-updated
       store.bumpUpdatedAt(c.id);
 
-      const ids = store.list().map((s) => s.id);
+      const ids = store.list(aliceId).map((s) => s.id);
       expect(ids).toEqual([c.id, b.id, a.id]);
+    });
+
+    // Phase 04 / p4-T14 / FR-43 — list() filters by owner.
+    it('list returns only the owner\'s sessions (cross-user scoping)', async () => {
+      const aliceA = store.create(aliceId);
+      const aliceB = store.create(aliceId);
+      const bobA = store.create(bobId);
+
+      const aliceIds = store.list(aliceId).map((s) => s.id).sort();
+      expect(aliceIds).toEqual([aliceA.id, aliceB.id].sort());
+
+      const bobIds = store.list(bobId).map((s) => s.id);
+      expect(bobIds).toEqual([bobA.id]);
     });
 
     it('get returns null for an unknown id', () => {
       expect(store.get('nope')).toBeNull();
     });
 
+    it('get returns ownerId when the row is owned', () => {
+      const s = store.create(aliceId);
+      const fetched = store.get(s.id);
+      expect(fetched).not.toBeNull();
+      expect(fetched!.ownerId).toBe(aliceId);
+    });
+
     it('rename updates the title and sets title_source = user', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       const out = store.rename(s.id, 'My Project Plan');
       expect(out).not.toBeNull();
       expect(out!.title).toBe('My Project Plan');
@@ -59,16 +94,16 @@ describe('ConversationStore', () => {
     });
 
     it('rename rejects empty/whitespace titles', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       expect(store.rename(s.id, '   ')).toBeNull();
       // title unchanged
       expect(store.get(s.id)!.title).toBe('New chat');
     });
 
     it('delete cascades to messages', () => {
-      const s = store.create();
-      const m1 = store.appendUserMessage(s.id, 'hello');
-      const m2 = store.appendAssistantMessage(s.id, 'hi', [
+      const s = store.create(aliceId);
+      store.appendUserMessage(s.id, 'hello');
+      store.appendAssistantMessage(s.id, 'hi', [
         { fileName: 'a.md', filePath: 'a.md', chunk: 'x', score: 0.9 },
       ]);
       expect(store.listMessages(s.id)).toHaveLength(2);
@@ -86,7 +121,7 @@ describe('ConversationStore', () => {
 
   describe('messages', () => {
     it('appendUserMessage persists the message and bumps updatedAt', async () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       const before = store.get(s.id)!.updatedAt;
       await sleep(SECOND);
       const m = store.appendUserMessage(s.id, 'hello world');
@@ -99,7 +134,7 @@ describe('ConversationStore', () => {
     });
 
     it('appendAssistantMessage persists sources as JSON', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       const sources = [
         { fileName: 'a.md', filePath: 'a.md', chunk: 'x', pageNumber: 2, headingPath: ['H1'], score: 0.9 },
       ];
@@ -112,7 +147,7 @@ describe('ConversationStore', () => {
 
     // Phase 03 / p3-T04 — toolCalls persistence.
     it('appendAssistantMessage persists toolCalls when provided', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       const toolCalls = [
         {
           name: 'get_section_chunks',
@@ -131,7 +166,7 @@ describe('ConversationStore', () => {
     });
 
     it('appendAssistantMessage without toolCalls leaves the column undefined', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       const m = store.appendAssistantMessage(s.id, 'reply', []);
       expect(m.toolCalls).toBeUndefined();
 
@@ -142,7 +177,7 @@ describe('ConversationStore', () => {
     it('tool_calls column is NULL on pre-Phase-03 messages (read paths tolerate NULL)', () => {
       // Simulate a message written before the migration by inserting
       // directly with tool_calls = NULL.
-      const s = store.create();
+      const s = store.create(aliceId);
       store.appendUserMessage(s.id, 'hi');
       const insertedAt = new Date()
         .toISOString()
@@ -163,7 +198,7 @@ describe('ConversationStore', () => {
     });
 
     it('preserves toolCalls ordering across iterations', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       const toolCalls = [
         {
           name: 'get_neighbor_chunks',
@@ -196,7 +231,7 @@ describe('ConversationStore', () => {
     });
 
     it('listMessages returns chronological order', async () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       store.appendUserMessage(s.id, 'first');
       await sleep(SECOND);
       store.appendAssistantMessage(s.id, 'second', []);
@@ -210,7 +245,7 @@ describe('ConversationStore', () => {
 
   describe('title_source rules (FR-15b)', () => {
     it('setGeneratedTitle overwrites default', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       const ok = store.setGeneratedTitle(s.id, 'LLM Generated Title');
       expect(ok).toBe(true);
       expect(store.get(s.id)!.title).toBe('LLM Generated Title');
@@ -218,7 +253,7 @@ describe('ConversationStore', () => {
     });
 
     it('setGeneratedTitle overwrites a previous fallback', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       store.setFallbackTitle(s.id, '60-char prefix…');
       expect(store.get(s.id)!.titleSource).toBe('fallback');
       const ok = store.setGeneratedTitle(s.id, 'LLM Title');
@@ -227,7 +262,7 @@ describe('ConversationStore', () => {
     });
 
     it('setGeneratedTitle rejects overwrite of user-renamed titles', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       store.rename(s.id, 'User Picked This');
       expect(store.get(s.id)!.titleSource).toBe('user');
       const ok = store.setGeneratedTitle(s.id, 'LLM Title');
@@ -238,7 +273,7 @@ describe('ConversationStore', () => {
 
     it('setGeneratedTitle rejects overwrite of an existing generated title', () => {
       // guards against duplicate concurrent title generators writing twice
-      const s = store.create();
+      const s = store.create(aliceId);
       store.setGeneratedTitle(s.id, 'First LLM Title');
       const ok = store.setGeneratedTitle(s.id, 'Second LLM Title');
       expect(ok).toBe(false);
@@ -246,7 +281,7 @@ describe('ConversationStore', () => {
     });
 
     it('setFallbackTitle overwrites default only', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       expect(store.setFallbackTitle(s.id, 'fallback…')).toBe(true);
       expect(store.get(s.id)!.titleSource).toBe('fallback');
 
@@ -255,7 +290,7 @@ describe('ConversationStore', () => {
     });
 
     it('setFallbackTitle rejects when title is already user-renamed', () => {
-      const s = store.create();
+      const s = store.create(aliceId);
       store.rename(s.id, 'User Picked');
       expect(store.setFallbackTitle(s.id, 'fallback…')).toBe(false);
     });
