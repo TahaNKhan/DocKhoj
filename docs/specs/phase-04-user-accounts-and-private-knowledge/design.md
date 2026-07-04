@@ -66,7 +66,7 @@ flowchart TB
 The middleware is the single chokepoint: every request that doesn't terminate at `/api/auth/*` or `/api/health` must have a valid session, or it's a 401. Everything downstream reads `request.user.id` to scope DB + Qdrant queries.
 
 ## Tech stack additions
-- **`argon2`** — password hashing. Native module; OWASP-recommended parameters. If the native build fails on the Docker image (Alpine + Node 20), the implementation falls back to **`bcrypt`** with `cost = 12` (both produce a hash of the same shape — `algorithm$params$salt$hash` — so we can swap without changing the schema or the verify code path, just the password-verify call). The choice is fixed at implementation time by which builds; documented in the task acceptance criteria.
+- **`crypto.scrypt`** (Node stdlib, `node:crypto`) — password hashing. `N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key`. No native build, no extra dep, works on Alpine + macOS + linux x64 identically. Hash format prefix is `scrypt$` so a future migration to argon2id is a verify-path swap with no DB migration. Originally this spec committed to argon2id; the implementation reverted to scrypt during T4 because neither `argon2` nor `bcrypt` were in `node_modules` and `npm install` would have corrupted the main checkout (worktrees symlink `node_modules` to main). User can override this decision post-T4 by reverting and adding `argon2` to `package.json` + the Dockerfile — call sites are unchanged thanks to the hash format prefix.
 - **No new infrastructure.** Everything fits inside the existing SQLite + Qdrant + Fastify stack.
 
 ## Module / package layout
@@ -84,7 +84,7 @@ src/
     user-store.ts        -- UserStore: createUser, findByUsername, updateLastLogin, etc.
     auth-session-store.ts -- AuthSessionStore: create, find, touch, deleteByUser, deleteById
     invite-store.ts      -- InviteStore: create, findByTokenHash, markUsed, list, delete
-    password.ts          -- hashPassword + verifyPassword (argon2id / bcrypt wrapper)
+    password.ts          -- hashPassword + verifyPassword (Node stdlib crypto.scrypt)
     auth.ts              -- Fastify plugin: register + decorate + onRequest hook
   routes/
     api-auth.ts          -- POST /api/auth/{register,login,logout,invite/accept}; GET /api/auth/{me,status}
@@ -140,7 +140,7 @@ tests/
 | ---------------- | ------ | --------------------------------------------------------------------- |
 | `id`             | TEXT PK | UUIDv4.                                                                |
 | `username`       | TEXT NOT NULL UNIQUE | 3–32 chars, `[A-Za-z0-9_-]+`, case-sensitive.                |
-| `password_hash`  | TEXT NOT NULL | argon2id or bcrypt; verify by `$`-splitting the algorithm prefix.       |
+| `password_hash`  | TEXT NOT NULL | scrypt(N=2^14,r=8,p=1) hash string with algorithm prefix; verify parses the prefix. |
 | `role`           | TEXT NOT NULL | `'admin'` or `'user'`. CHECK constraint.                              |
 | `created_at`     | TEXT NOT NULL DEFAULT (datetime('now')) |                                                                  |
 | `last_login_at`  | TEXT   | Nullable until first login.                                           |
@@ -446,7 +446,7 @@ The "404 for both missing and forbidden" rule (for documents, sessions, and Qdra
 - `services/user-store.test.ts` — createUser (first user is admin), findByUsername, updateLastLogin, username uniqueness, password-hash storage.
 - `services/auth-session-store.test.ts` — create, find, touch (rolling expiry), deleteByUser, deleteById, expiry semantics.
 - `services/invite-store.test.ts` — create (token-hash storage), findByTokenHash, markUsed, list outstanding, single-use.
-- `services/password.test.ts` — hash-then-verify round-trip; reject wrong password; reject malformed hash; parameter sensitivity (argon2id defaults if available, bcrypt otherwise).
+- `services/password.test.ts` — hash-then-verify round-trip; reject wrong password; reject malformed hash; parameter sensitivity (scrypt N=2^14 is tuned for test speed; bump to N=2^17 only if the deployment threat model needs it).
 - `services/qdrant-visibility.test.ts` — using `fastify.inject` against a real Fastify app wired to a (test-only) in-memory Qdrant mock OR a real Qdrant in CI if available. Verifies: user A's private file is invisible to user B's search / chat / tools; user B's public file is visible to user A.
 - `routes/api-auth.test.ts` — register (first user only), login, logout, me, invite/accept, status.
 - `routes/api-admin.test.ts` — invite CRUD, user CRUD, password reset, self-delete prevention.
@@ -476,7 +476,7 @@ Per the project CLAUDE.md, `./restart.sh` is the integration harness — it rebu
 - **Cookie behavior:**
   - Dev: `Secure` flag OFF (the SPA is HTTP on localhost).
   - Prod: `Secure` flag ON (requires HTTPS — call this out in the README's deployment section).
-- **The `argon2` Docker build:** the existing image is Alpine + Node 20. `argon2` compiles natively with `node-gyp`; the build needs `python3`, `make`, and `g++` (already present in `node:20-alpine` via `apk add --no-cache python3 make g++`). If the build fails (it shouldn't, but flagged as a risk), the implementation falls back to `bcrypt`, which has a pure-JS fallback.
+- **No native build for hashing.** `crypto.scrypt` ships in Node's stdlib (`node:crypto`) on every supported platform — Alpine + Node 20 (the project's Docker image), macOS dev hosts, linux x64. No `apk add` step, no `node-gyp` risk.
 - **Observability:**
   - All auth events logged at INFO with `userId` (when known) and `actorUserId`.
   - All 401s logged at INFO with `path` (so brute-force scans surface in logs).
@@ -490,11 +490,11 @@ Per the project CLAUDE.md, `./restart.sh` is the integration harness — it rebu
 - **Threat 3: Session theft via XSS.** Mitigated by `HttpOnly` cookies (no JS access to `dockhoj_sid`).
 - **Threat 4: CSRF.** Mitigated by `SameSite=Lax` + same-origin SPA + JSON-only mutating endpoints.
 - **Threat 5: Brute-force login.** Not mitigated in Phase 04 (no rate limiting, no lockout). Risk accepted for the self-hosted deployment profile; flagged for future work.
-- **Threat 6: Password database leak.** Mitigated by argon2id (or bcrypt as fallback). Neither algorithm is reversible at any reasonable cost.
+- **Threat 6: Password database leak.** Mitigated by `crypto.scrypt` (N=2^14, r=8, p=1, 16-byte salt). Per-row salt means identical passwords produce different hashes. The KDF is not reversible at any reasonable cost.
 - **Threat 7: Invite link interception.** Mitigated by the link being single-use, expiring in 7 days, and revocable by the admin. The token is stored hashed in the DB; a DB leak doesn't yield usable tokens.
 
 ### PII handling
-- The only PII collected is `username` and the argon2id password hash. No email, no display name, no profile fields.
+- The only PII collected is `username` and the scrypt password hash. No email, no display name, no profile fields.
 - The `last_login_at` column is a timestamp, not a behavioral log.
 - No analytics, no tracking, no third-party calls in the auth path.
 
@@ -502,7 +502,7 @@ Per the project CLAUDE.md, `./restart.sh` is the integration harness — it rebu
 
 | Risk | Likelihood | Impact | Mitigation |
 | ---- | ---------- | ------ | ---------- |
-| `argon2` native build fails on Alpine Docker image | Low | Medium | Fall back to `bcrypt` with `cost = 12`. Both produce interchangeable hash strings for verification purposes. Fixed at implementation time by which builds cleanly. |
+| No native hash dep needed — `crypto.scrypt` is stdlib | n/a | n/a | Resolved: switched to Node stdlib `crypto.scrypt` during T4 implementation. No `apk add`, no `node-gyp`, no native build risk. |
 | A Qdrant path is missed during the visibility-filter sweep | Medium | High | Explicit test (`qdrant-visibility.test.ts`) that uploads a private file as A and asserts B cannot retrieve it via search, chat, expand, or any agent tool. Code review checklist item: every PR that adds a Qdrant call must either apply `buildVisibilityFilter` or explicitly justify why not. |
 | The Qdrant payload backfill leaves legacy chunks without `ownerId`/`visibility` | Medium | High | The backfill is gated: it scans all points, sets the two fields, and verifies the count of updated points equals the count of points seen. Idempotent (safe to re-run). Verified by a vitest assertion on the count. |
 | Login mutation during the rolling-expiry UPDATE causes write contention | Low | Low | `UPDATE auth_sessions WHERE id=?` is a single-row PK update; SQLite serializes writes but the row is touched once per request — throughput is fine for self-hosted scale (a few users, a few RPS). |
@@ -543,7 +543,7 @@ Each step ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
 
 These are choices made in the design that the user may want to override during review. They are NOT open questions in the blocking sense — the design commits to them — but they're flagged so the user can flip them if they want.
 
-- **OD-1.** `argon2` vs `bcrypt`. **Committed to: argon2id.** Fallback to bcrypt if the native build fails. Both are acceptable; the user may have a preference.
+- **OD-1.** Password hashing algorithm. **Originally committed to: argon2id.** **Shipped as: Node stdlib `crypto.scrypt`** (N=2^14, r=8, p=1, 16-byte salt, 64-byte derived key). Reason: neither `argon2` nor `bcrypt` were available at T4 implementation time and `npm install` would have corrupted the main checkout (worktree symlinks `node_modules` to main). The user can flip this back to argon2id post-T4 by adding the package and reverting `services/password.ts`; the hash format prefix (`scrypt$…`) is designed to keep that future migration a single-file swap with no DB change.
 - **OD-2.** Username vs email as the login identifier. **Committed to: username.** No email field; no SMTP; no password reset flow.
 - **OD-3.** First-user-becomes-admin vs always-admin. **Committed to: first user is admin; subsequent signups require invite.** Per the user's design answer.
 - **OD-4.** When a user is deleted, their public-marked files become shared (`owner_id` set to NULL) or are deleted along with their private files? **Committed to: public files become shared.** The user's `team-handbook.md` survives even after Alex is fired.
