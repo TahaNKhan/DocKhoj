@@ -285,6 +285,8 @@ describe('agent-tools — executeAgentTool', () => {
         bytes: 100,
         uploadedAt: '2026-07-01 10:00:00',
         chunkCount: 4,
+      ownerId: null,
+      visibility: 'public',
       });
 
       // Tool sees filePath = `${fileId}${ext}` = 'doc-abc.md'
@@ -336,6 +338,8 @@ describe('agent-tools — executeAgentTool', () => {
         bytes: 200,
         uploadedAt: '2026-07-02 09:00:00',
         chunkCount: 12,
+      ownerId: null,
+      visibility: 'public',
       });
 
       const out = await executeAgentTool(
@@ -357,6 +361,8 @@ describe('agent-tools — executeAgentTool', () => {
         bytes: 100,
         uploadedAt: '2026-07-02 09:00:00',
         chunkCount: 4,
+      ownerId: null,
+      visibility: 'public',
       });
       const out = await executeAgentTool(
         'get_document',
@@ -376,6 +382,8 @@ describe('agent-tools — executeAgentTool', () => {
         bytes: 50,
         uploadedAt: '2026-07-01 10:00:00',
         chunkCount: 2,
+      ownerId: null,
+      visibility: 'public',
       });
       new DocumentStore(db).insert({
         fileId: 'doc-newer',
@@ -384,6 +392,8 @@ describe('agent-tools — executeAgentTool', () => {
         bytes: 60,
         uploadedAt: '2026-07-02 10:00:00',
         chunkCount: 3,
+      ownerId: null,
+      visibility: 'public',
       });
 
       const out = await executeAgentTool(

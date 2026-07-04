@@ -1,12 +1,31 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import Database from 'better-sqlite3';
 import { migrate } from '../../src/db/migrate.js';
-import { DocumentStore } from '../../src/services/document-store.js';
+import { DocumentStore, type InsertDocument } from '../../src/services/document-store.js';
 
 // p3-T01 tests — DocumentStore CRUD against an in-memory DB. Covers
 // the FR-1 / FR-2 / FR-7 acceptance: insert on upload, list in
 // uploaded_at DESC order, idempotent delete, get-by-id, count for
 // /api/status.
+// p4-T09 added owner_id + visibility to the insert payload. These
+// CRUD tests don't care about the new fields — they just need the
+// NOT NULL columns populated. `row` builds a payload with a
+// nullable owner + a default 'public' visibility, so each `insert`
+// call can spread it and override only the per-test fields.
+
+function row(overrides: Partial<InsertDocument>): InsertDocument {
+  return {
+    fileId: 'default',
+    fileName: 'default.md',
+    fileType: 'md',
+    bytes: 0,
+    uploadedAt: '2026-07-01 10:00:00',
+    chunkCount: 0,
+    ownerId: null,
+    visibility: 'public',
+    ...overrides,
+  };
+}
 
 describe('DocumentStore', () => {
   let db: ReturnType<typeof Database>;
@@ -24,17 +43,17 @@ describe('DocumentStore', () => {
   });
 
   it('insert writes a row that can be retrieved by fileId', () => {
-    store.insert({
-      fileId: 'file-abc',
-      fileName: 'notes.md',
-      fileType: 'md',
-      bytes: 1024,
-      uploadedAt: '2026-07-01 10:00:00',
-      chunkCount: 12,
-    });
+    store.insert(
+      row({
+        fileId: 'file-abc',
+        fileName: 'notes.md',
+        bytes: 1024,
+        chunkCount: 12,
+      })
+    );
 
-    const row = store.get('file-abc');
-    expect(row).toEqual({
+    const r = store.get('file-abc');
+    expect(r).toEqual({
       fileId: 'file-abc',
       fileName: 'notes.md',
       fileType: 'md',
@@ -45,53 +64,18 @@ describe('DocumentStore', () => {
   });
 
   it('insert throws on duplicate file_id (PRIMARY KEY)', () => {
-    store.insert({
-      fileId: 'dup',
-      fileName: 'a.md',
-      fileType: 'md',
-      bytes: 1,
-      uploadedAt: '2026-07-01 10:00:00',
-      chunkCount: 0,
-    });
+    store.insert(row({ fileId: 'dup', fileName: 'a.md' }));
     expect(() =>
-      store.insert({
-        fileId: 'dup',
-        fileName: 'b.md',
-        fileType: 'md',
-        bytes: 1,
-        uploadedAt: '2026-07-01 10:00:00',
-        chunkCount: 0,
-      })
+      store.insert(row({ fileId: 'dup', fileName: 'b.md' }))
     ).toThrow();
   });
 
   it('list returns rows in uploaded_at DESC order', async () => {
-    store.insert({
-      fileId: 'a',
-      fileName: 'a.md',
-      fileType: 'md',
-      bytes: 1,
-      uploadedAt: '2026-07-01 10:00:00',
-      chunkCount: 0,
-    });
+    store.insert(row({ fileId: 'a', fileName: 'a.md' }));
     await sleep(SECOND);
-    store.insert({
-      fileId: 'b',
-      fileName: 'b.md',
-      fileType: 'md',
-      bytes: 1,
-      uploadedAt: '2026-07-01 10:00:01',
-      chunkCount: 0,
-    });
+    store.insert(row({ fileId: 'b', fileName: 'b.md', uploadedAt: '2026-07-01 10:00:01' }));
     await sleep(SECOND);
-    store.insert({
-      fileId: 'c',
-      fileName: 'c.md',
-      fileType: 'md',
-      bytes: 1,
-      uploadedAt: '2026-07-01 10:00:02',
-      chunkCount: 0,
-    });
+    store.insert(row({ fileId: 'c', fileName: 'c.md', uploadedAt: '2026-07-01 10:00:02' }));
 
     const ids = store.list().map((r) => r.fileId);
     expect(ids).toEqual(['c', 'b', 'a']);
@@ -106,14 +90,7 @@ describe('DocumentStore', () => {
   });
 
   it('delete removes the row and returns true', () => {
-    store.insert({
-      fileId: 'gone',
-      fileName: 'gone.md',
-      fileType: 'md',
-      bytes: 1,
-      uploadedAt: '2026-07-01 10:00:00',
-      chunkCount: 0,
-    });
+    store.insert(row({ fileId: 'gone', fileName: 'gone.md' }));
     expect(store.get('gone')).not.toBeNull();
     expect(store.delete('gone')).toBe(true);
     expect(store.get('gone')).toBeNull();
@@ -125,45 +102,21 @@ describe('DocumentStore', () => {
 
   it('count reflects the number of rows', () => {
     expect(store.count()).toBe(0);
-    store.insert({
-      fileId: 'a',
-      fileName: 'a.md',
-      fileType: 'md',
-      bytes: 1,
-      uploadedAt: '2026-07-01 10:00:00',
-      chunkCount: 0,
-    });
+    store.insert(row({ fileId: 'a', fileName: 'a.md' }));
     expect(store.count()).toBe(1);
-    store.insert({
-      fileId: 'b',
-      fileName: 'b.md',
-      fileType: 'md',
-      bytes: 1,
-      uploadedAt: '2026-07-01 10:00:01',
-      chunkCount: 0,
-    });
+    store.insert(row({ fileId: 'b', fileName: 'b.md', uploadedAt: '2026-07-01 10:00:01' }));
     expect(store.count()).toBe(2);
     store.delete('a');
     expect(store.count()).toBe(1);
   });
 
   it('handles two uploads of the same original filename with distinct fileIds', () => {
-    store.insert({
-      fileId: 'file-1',
-      fileName: 'notes.md',
-      fileType: 'md',
-      bytes: 100,
-      uploadedAt: '2026-07-01 10:00:00',
-      chunkCount: 5,
-    });
-    store.insert({
-      fileId: 'file-2',
-      fileName: 'notes.md',
-      fileType: 'md',
-      bytes: 200,
-      uploadedAt: '2026-07-01 10:00:01',
-      chunkCount: 7,
-    });
+    store.insert(
+      row({ fileId: 'file-1', fileName: 'notes.md', bytes: 100, chunkCount: 5 })
+    );
+    store.insert(
+      row({ fileId: 'file-2', fileName: 'notes.md', bytes: 200, chunkCount: 7, uploadedAt: '2026-07-01 10:00:01' })
+    );
 
     const list = store.list();
     expect(list).toHaveLength(2);

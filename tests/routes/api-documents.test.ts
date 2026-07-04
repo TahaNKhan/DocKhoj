@@ -84,6 +84,8 @@ describe('/api/documents', () => {
         bytes: 100,
         uploadedAt: '2026-07-01 10:00:00',
         chunkCount: 4,
+      ownerId: null,
+      visibility: 'public',
       });
       await sleep(SECOND);
       store.insert({
@@ -93,6 +95,8 @@ describe('/api/documents', () => {
         bytes: 200,
         uploadedAt: '2026-07-01 10:00:01',
         chunkCount: 6,
+      ownerId: null,
+      visibility: 'public',
       });
 
       const res = await app.inject({ method: 'GET', url: '/api/documents' });
@@ -160,6 +164,8 @@ describe('/api/documents', () => {
         bytes: 12,
         uploadedAt: '2026-07-01 10:00:00',
         chunkCount: 3,
+      ownerId: null,
+      visibility: 'public',
       });
       const onDiskPath = path.join(process.env.UPLOAD_DIR!, `${fileId}.md`);
       await fs.writeFile(onDiskPath, '# hello');
@@ -194,6 +200,8 @@ describe('/api/documents', () => {
         bytes: 12,
         uploadedAt: '2026-07-01 10:00:00',
         chunkCount: 3,
+      ownerId: null,
+      visibility: 'public',
       });
       const onDiskPath = path.join(process.env.UPLOAD_DIR!, `${fileId}.md`);
       await fs.writeFile(onDiskPath, '# hello');
@@ -222,6 +230,8 @@ describe('/api/documents', () => {
         bytes: 12,
         uploadedAt: '2026-07-01 10:00:00',
         chunkCount: 3,
+      ownerId: null,
+      visibility: 'public',
       });
       // Don't write a file — delete must still succeed.
 
@@ -250,6 +260,8 @@ describe('/api/documents', () => {
         bytes: 1,
         uploadedAt: '2026-07-01 10:00:00',
         chunkCount: 1,
+      ownerId: null,
+      visibility: 'public',
       });
       await fs.writeFile(path.join(process.env.UPLOAD_DIR!, `${fileId}.md`), '# x');
       mockDeleteByFilePath.mockResolvedValue(1);

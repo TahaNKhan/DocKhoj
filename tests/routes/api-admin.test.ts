@@ -336,6 +336,8 @@ describe('/api/admin/* routes', () => {
         bytes: 10,
         uploadedAt: '2026-07-03 10:00:00',
         chunkCount: 1,
+      ownerId: null,
+      visibility: 'public',
       });
       db.prepare(`UPDATE documents SET owner_id = ?, visibility = 'private' WHERE file_id = ?`).run(userId, privateFileId);
 
@@ -346,6 +348,8 @@ describe('/api/admin/* routes', () => {
         bytes: 10,
         uploadedAt: '2026-07-03 10:00:01',
         chunkCount: 1,
+      ownerId: null,
+      visibility: 'public',
       });
       db.prepare(`UPDATE documents SET owner_id = ?, visibility = 'public' WHERE file_id = ?`).run(userId, publicFileId);
 
@@ -424,6 +428,8 @@ describe('/api/admin/* routes', () => {
         bytes: 1,
         uploadedAt: '2026-07-03 10:00:00',
         chunkCount: 1,
+      ownerId: null,
+      visibility: 'public',
       });
       db.prepare(`UPDATE documents SET owner_id = ?, visibility = 'private' WHERE file_id = ?`).run(userId, privateFileId);
 
