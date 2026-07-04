@@ -234,8 +234,8 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
 
 - **Description.**
   - Write `007_chat_sessions_owner.sql`:
-    - `ALTER TABLE sessions ADD COLUMN owner_id TEXT REFERENCES users(id) ON DELETE CASCADE;`
-    - `DELETE FROM sessions;` (cascades to `messages`).
+    - `ALTER TABLE conversations ADD COLUMN owner_id TEXT REFERENCES users(id) ON DELETE CASCADE;`
+    - `DELETE FROM conversations;` (cascades to `messages`).
   - Update `services/conversations.ts` to write/read `owner_id`.
   - Update `routes/api-sessions.ts`:
     - `POST /api/sessions` stamps `owner_id = request.user.id`.
@@ -244,7 +244,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
 - **Maps to requirements.** FR-41..45.
 - **Maps to design.** §"Data model"; §"API surface".
 - **Acceptance criteria.**
-  - On a Phase-03-era SQLite: migration runs, `SELECT COUNT(*) FROM sessions;` returns 0, `SELECT COUNT(*) FROM messages;` returns 0.
+  - On a Phase-03-era SQLite: migration runs, `SELECT COUNT(*) FROM conversations;` returns 0, `SELECT COUNT(*) FROM messages;` returns 0.
   - User A's session is invisible to user B (verified via vitest).
   - User A's session list grows when they create new conversations; user B's doesn't.
 - **Dependencies.** T10.
@@ -421,5 +421,5 @@ To compress wall-clock: as soon as T2 lands, spin **T3** (Qdrant-only diff) and 
 
 ## Notes
 - Per global CLAUDE.md §3, no commit without `./restart.sh` + `npm test -- --run` passing.
-- Per global CLAUDE.md §0, no shortcuts — every task does the full feature; no `TODO` placeholders; the migration runner handles the legacy `DELETE FROM sessions;` cleanly with the FK cascade.
+- Per global CLAUDE.md §0, no shortcuts — every task does the full feature; no `TODO` placeholders; the migration runner handles the legacy `DELETE FROM conversations;` cleanly with the FK cascade.
 - If a task turns out larger than estimated during implementation, split in this file rather than letting it sprawl.
