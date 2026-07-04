@@ -86,6 +86,47 @@ function buildSearchFilter(opts: SearchOptions): QdrantFilter | undefined {
   return must.length > 0 ? { must } : undefined;
 }
 
+// Phase 04 / p4-T08 / FR-32 — every Qdrant query for the requester
+// must include this clause. The should group matches EITHER a
+// public chunk OR a chunk owned by `viewerId`. `ownerId: ''` is the
+// NO_OWNER_SENTINEL (legacy/shared rows) — it never matches a real
+// viewerId, so shared files only surface via the visibility clause.
+// ponytail: default viewerId = NO_OWNER_SENTINEL — until T11/T12
+// threads `request.user.id` through the route handlers, every call
+// site that hasn't been updated yet still gets Phase-03 behavior
+// (public + shared visible). The clause is still always merged;
+// caller-passed viewerIds just narrow it.
+export function buildVisibilityFilter(viewerId: string): QdrantFilter {
+  return {
+    must: [
+      {
+        should: [
+          { key: 'visibility', match: { value: 'public' } },
+          { key: 'ownerId', match: { value: viewerId } },
+        ],
+      },
+    ],
+  };
+}
+
+// Merge an existing optional filter (from buildSearchFilter) with
+// the visibility clause into one `must` clause. Both pieces land
+// inside `must` so the AND with the visibility should-group is
+// honored. `buildVisibilityFilter` is the single source of truth
+// for the should group; never inline it.
+function mergeWithVisibility(
+  existing: QdrantFilter | undefined,
+  viewerId: string
+): QdrantFilter {
+  const vis = buildVisibilityFilter(viewerId);
+  return {
+    must: [
+      ...(existing?.must ?? []),
+      ...vis.must!,
+    ],
+  };
+}
+
 export async function initCollection(): Promise<void> {
   log.info({ url: QDRANT_URL }, 'Connecting to Qdrant');
   const collections = await client.getCollections();
@@ -335,10 +376,15 @@ export async function upsertChunks(chunks: DocumentChunk[]): Promise<void> {
 
 export async function searchChunks(
   queryVector: number[],
-  opts: SearchOptions = {}
+  opts: SearchOptions = {},
+  // Phase 04 / p4-T08 / FR-32 — viewer's id used by
+  // buildVisibilityFilter. Optional with NO_OWNER_SENTINEL default
+  // so Phase-03 callers that haven't been threaded yet still get
+  // Phase-03 (public + shared) behavior.
+  viewerId: string = NO_OWNER_SENTINEL
 ): Promise<DocumentChunk[]> {
   const limit = opts.limit ?? 5;
-  const filter = buildSearchFilter(opts);
+  const filter = mergeWithVisibility(buildSearchFilter(opts), viewerId);
   log.debug({ limit, hasFilter: !!filter }, 'Searching');
 
   const response = await client.query(COLLECTION_NAME, {
@@ -368,17 +414,21 @@ export async function searchChunks(
 
 async function _fetchByFilePathAndIndex(
   filePath: string,
-  chunkIndex: number
+  chunkIndex: number,
+  viewerId: string = NO_OWNER_SENTINEL
 ): Promise<DocumentChunk[]> {
   try {
     const response = await client.query(COLLECTION_NAME, {
       query: undefined as unknown as number[],
-      filter: {
-        must: [
-          { key: 'filePath', match: { value: filePath } },
-          { key: 'chunkIndex', match: { value: chunkIndex } },
-        ],
-      } as unknown as Record<string, unknown>,
+      filter: mergeWithVisibility(
+        {
+          must: [
+            { key: 'filePath', match: { value: filePath } },
+            { key: 'chunkIndex', match: { value: chunkIndex } },
+          ],
+        },
+        viewerId
+      ) as unknown as Record<string, unknown>,
       limit: 1,
       with_payload: true,
     });
@@ -402,17 +452,21 @@ async function _fetchByFilePathAndIndex(
 
 async function _fetchByFilePathAndHeadingPath(
   filePath: string,
-  headingPath: string[]
+  headingPath: string[],
+  viewerId: string = NO_OWNER_SENTINEL
 ): Promise<DocumentChunk[]> {
   try {
     const response = await client.query(COLLECTION_NAME, {
       query: undefined as unknown as number[],
-      filter: {
-        must: [
-          { key: 'filePath', match: { value: filePath } },
-          { key: 'headingPath', match: { value: headingPath } },
-        ],
-      } as unknown as Record<string, unknown>,
+      filter: mergeWithVisibility(
+        {
+          must: [
+            { key: 'filePath', match: { value: filePath } },
+            { key: 'headingPath', match: { value: headingPath } },
+          ],
+        },
+        viewerId
+      ) as unknown as Record<string, unknown>,
       limit: 50,
       with_payload: true,
     });
@@ -436,7 +490,8 @@ async function _fetchByFilePathAndHeadingPath(
 
 export async function expandHits(
   hits: DocumentChunk[],
-  options: ExpandOptions
+  options: ExpandOptions,
+  viewerId: string = NO_OWNER_SENTINEL
 ): Promise<DocumentChunk[]> {
   if (options.mode === 'none' || hits.length === 0) return hits;
 
@@ -453,7 +508,7 @@ export async function expandHits(
         if (delta === 0) continue;
         const targetIndex = hit.payload.chunkIndex + delta;
         if (targetIndex < 0 || targetIndex >= hit.payload.totalChunks) continue;
-        const neighbors = await _fetchByFilePathAndIndex(hit.payload.filePath, targetIndex);
+        const neighbors = await _fetchByFilePathAndIndex(hit.payload.filePath, targetIndex, viewerId);
         for (const n of neighbors) {
           if (seen.has(n.id)) continue;
           seen.add(n.id);
@@ -470,7 +525,7 @@ export async function expandHits(
     for (const hit of hits) {
       const headingPath = hit.payload.headingPath ?? [];
       if (headingPath.length === 0) continue;
-      const sectionChunks = await _fetchByFilePathAndHeadingPath(hit.payload.filePath, headingPath);
+      const sectionChunks = await _fetchByFilePathAndHeadingPath(hit.payload.filePath, headingPath, viewerId);
       for (const s of sectionChunks) {
         if (seen.has(s.id)) continue;
         seen.add(s.id);
@@ -520,18 +575,22 @@ export async function deleteByFilePath(filePath: string): Promise<number> {
 // Phase 03 / p3-T02: the two internal helpers are promoted to
 // public exports so the agent-tools module (p3-T05) can reuse them
 // for the get_neighbor_chunks and get_section_chunks tools.
+// Phase 04 / p4-T08 / FR-32: viewerId is optional — see the
+// searchChunks comment for the default rationale.
 export async function fetchByFilePathAndIndex(
   filePath: string,
-  chunkIndex: number
+  chunkIndex: number,
+  viewerId: string = NO_OWNER_SENTINEL
 ): Promise<DocumentChunk[]> {
-  return _fetchByFilePathAndIndex(filePath, chunkIndex);
+  return _fetchByFilePathAndIndex(filePath, chunkIndex, viewerId);
 }
 
 export async function fetchByFilePathAndHeadingPath(
   filePath: string,
-  headingPath: string[]
+  headingPath: string[],
+  viewerId: string = NO_OWNER_SENTINEL
 ): Promise<DocumentChunk[]> {
-  return _fetchByFilePathAndHeadingPath(filePath, headingPath);
+  return _fetchByFilePathAndHeadingPath(filePath, headingPath, viewerId);
 }
 
 export async function getCollectionInfo() {
