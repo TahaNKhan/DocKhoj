@@ -179,14 +179,14 @@ export async function chatStreamRoutes(fastify: FastifyInstance) {
         ? {
             kind: 'agentic',
             stream: streamAgentChat(
-              { question: q, sessionId: validSid, limit: limitNum, conversationHistory: history, db },
+              { question: q, sessionId: validSid, limit: limitNum, conversationHistory: history, db, viewerId: request.user?.id },
               ac.signal
             ) as AsyncGenerator<unknown>,
           }
         : {
             kind: 'non-agentic',
             stream: streamChatCompletion(
-              { question: q, sessionId: validSid, conversationHistory: history, limit: limitNum, expandMode },
+              { question: q, sessionId: validSid, conversationHistory: history, limit: limitNum, expandMode, viewerId: request.user?.id },
               ac.signal
             ),
           };
@@ -344,7 +344,7 @@ export async function chatStreamRoutes(fastify: FastifyInstance) {
             activeDispatch = {
               kind: 'non-agentic',
               stream: streamChatCompletion(
-                { question: q, sessionId: validSid, conversationHistory: history, limit: limitNum, expandMode: 'none' },
+                { question: q, sessionId: validSid, conversationHistory: history, limit: limitNum, expandMode: 'none', viewerId: request.user?.id },
                 ac.signal
               ),
             };

@@ -41,7 +41,10 @@ vi.mock('../../src/services/title-generator.js', () => ({
 }));
 
 import { migrate } from '../../src/db/migrate.js';
+import { authPlugin } from '../../src/services/auth.js';
 import { chatStreamRoutes } from '../../src/routes/chat-stream.js';
+import { UserStore } from '../../src/services/user-store.js';
+import { AuthSessionStore } from '../../src/services/auth-session-store.js';
 
 // Parse the SSE wire format into a list of {event,data} records.
 function parseSse(body: string): Array<{ event: string; data: unknown }> {
@@ -363,5 +366,210 @@ describe('POST /api/chat/stream — agentic path (default expand=auto)', () => {
     const err = events.find((e) => e.event === 'error');
     expect(err).toBeDefined();
     expect((err!.data as { message: string }).message).toBe('Chat failed');
+  });
+});
+
+// p4-T11 / FR-38 — chat-stream threads request.user.id as the
+// viewerId into both streamChatCompletion (non-agentic) and
+// streamAgentChat (agentic). The route tests in the suites above
+// don't register auth, so request.user is undefined there — this
+// suite registers the real authPlugin + two users and asserts the
+// right id reaches the inner stream factory.
+describe('POST /api/chat/stream — viewerId threading (p4-T11 / FR-38)', () => {
+  let app: ReturnType<typeof Fastify>;
+  let db: ReturnType<typeof Database>;
+  let aliceId: string;
+  let aliceCookie: string;
+  let bobCookie: string;
+
+  beforeEach(async () => {
+    db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db);
+    const users = new UserStore(db);
+    const sessions = new AuthSessionStore(db);
+    const alice = await users.createUser({
+      username: 'alice',
+      password: 'alice-pass-123!',
+      role: 'user',
+    });
+    const bob = await users.createUser({
+      username: 'bob',
+      password: 'bob-pass-123!',
+      role: 'user',
+    });
+    aliceId = alice.id;
+    aliceCookie = `dockhoj_sid=${sessions.create(aliceId).id}`;
+    bobCookie = `dockhoj_sid=${sessions.create(bob.id).id}`;
+
+    app = Fastify({ logger: false });
+    (app as unknown as { db: Database.Database }).db = db;
+    await app.register(authPlugin);
+    await app.register(chatStreamRoutes);
+    await app.ready();
+    streamChatCompletionMock.mockReset();
+    streamAgentChatMock.mockReset();
+  });
+
+  afterEach(async () => {
+    await app.close();
+    db.close();
+  });
+
+  it('401 without a session cookie (regression — auth still gates the endpoint)', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/chat/stream',
+      payload: { q: 'q', expand: 'none' },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(streamChatCompletionMock).not.toHaveBeenCalled();
+    expect(streamAgentChatMock).not.toHaveBeenCalled();
+  });
+
+  it('passes alice.id as viewerId to streamChatCompletion (non-agentic)', async () => {
+    streamChatCompletionMock.mockImplementationOnce(async function* () {
+      yield { type: 'sources', sources: [] };
+      yield { type: 'token', text: 'hi' };
+      yield { type: 'done' };
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/chat/stream',
+      payload: { q: 'q', expand: 'none' },
+      headers: { cookie: aliceCookie },
+    });
+    expect(streamChatCompletionMock).toHaveBeenCalledTimes(1);
+    const params = streamChatCompletionMock.mock.calls[0][0] as { viewerId?: string };
+    expect(params.viewerId).toBe(aliceId);
+  });
+
+  it('passes bob.id as viewerId to streamChatCompletion (non-agentic)', async () => {
+    streamChatCompletionMock.mockImplementationOnce(async function* () {
+      yield { type: 'sources', sources: [] };
+      yield { type: 'token', text: 'hi' };
+      yield { type: 'done' };
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/chat/stream',
+      payload: { q: 'q', expand: 'none' },
+      headers: { cookie: bobCookie },
+    });
+    const params = streamChatCompletionMock.mock.calls[0][0] as { viewerId?: string };
+    expect(params.viewerId).not.toBe(aliceId);
+    expect(params.viewerId).toBeDefined();
+  });
+
+  it('passes alice.id as viewerId to streamAgentChat (agentic)', async () => {
+    streamAgentChatMock.mockImplementationOnce(async function* () {
+      yield { type: 'sources', sources: [] };
+      yield { type: 'token', text: 'final' };
+      yield { type: 'done', iterations: 1 };
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/chat/stream',
+      payload: { q: 'q', expand: 'auto' },
+      headers: { cookie: aliceCookie },
+    });
+    expect(streamAgentChatMock).toHaveBeenCalledTimes(1);
+    const params = streamAgentChatMock.mock.calls[0][0] as { viewerId?: string };
+    expect(params.viewerId).toBe(aliceId);
+  });
+
+  it('passes bob.id as viewerId to streamAgentChat (agentic)', async () => {
+    streamAgentChatMock.mockImplementationOnce(async function* () {
+      yield { type: 'sources', sources: [] };
+      yield { type: 'done', iterations: 1 };
+    });
+    await app.inject({
+      method: 'POST',
+      url: '/api/chat/stream',
+      payload: { q: 'q', expand: 'auto' },
+      headers: { cookie: bobCookie },
+    });
+    const params = streamAgentChatMock.mock.calls[0][0] as { viewerId?: string };
+    expect(params.viewerId).not.toBe(aliceId);
+    expect(params.viewerId).toBeDefined();
+  });
+
+  // The headline acceptance criterion: the SSE `sources` event
+  // must not include chunks from another user's private file when
+  // bob is the requester. The mock simulates the buildVisibilityFilter
+  // gate — it inspects params.viewerId and only emits alice's chunk
+  // when viewerId === aliceId.
+  it("does not leak A's private chunks via the SSE sources event when B is the requester", async () => {
+    streamChatCompletionMock.mockImplementationOnce(async function* (params: { viewerId?: string }) {
+      const sources: Array<{ id: string; payload: { fileName: string; filePath: string; chunk: string }; score: number }> = [];
+      // The mock is the visibility filter: alice's private chunk
+      // only surfaces when viewerId === aliceId. For bob, sources
+      // are empty — mirroring how real Qdrant would behave.
+      if (params.viewerId === aliceId) {
+        sources.push({
+          id: 'alice-secret-1',
+          payload: {
+            fileName: 'alice-secret.md',
+            filePath: 'alice-secret.md',
+            chunk: 'a-unique-marker-that-only-appears-in-alice-file',
+          },
+          score: 0.95,
+        });
+      }
+      yield { type: 'sources', sources };
+      yield { type: 'token', text: 'mock answer' };
+      yield { type: 'done' };
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/chat/stream',
+      payload: { q: 'q', expand: 'none' },
+      headers: { cookie: bobCookie },
+    });
+    expect(res.statusCode).toBe(200);
+    const events = parseSse(res.body);
+    const sourcesEv = events.find((e) => e.event === 'sources');
+    expect(sourcesEv).toBeDefined();
+    const sources = sourcesEv!.data as Array<{ fileName: string }>;
+    // The assertion: NO foreign chunks in bob's sources event.
+    expect(sources).toHaveLength(0);
+    // And confirm the mock received bob's id, not alice's.
+    const callArgs = streamChatCompletionMock.mock.calls[0][0] as { viewerId?: string };
+    expect(callArgs.viewerId).not.toBe(aliceId);
+  });
+
+  it("includes A's chunks in the SSE sources event when A is the requester (positive control)", async () => {
+    streamChatCompletionMock.mockImplementationOnce(async function* (params: { viewerId?: string }) {
+      const sources: Array<{ id: string; payload: { fileName: string; filePath: string; chunk: string }; score: number }> = [];
+      if (params.viewerId === aliceId) {
+        sources.push({
+          id: 'alice-secret-1',
+          payload: {
+            fileName: 'alice-secret.md',
+            filePath: 'alice-secret.md',
+            chunk: 'a-unique-marker',
+          },
+          score: 0.95,
+        });
+      }
+      yield { type: 'sources', sources };
+      yield { type: 'token', text: 'mock answer' };
+      yield { type: 'done' };
+    });
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/chat/stream',
+      payload: { q: 'q', expand: 'none' },
+      headers: { cookie: aliceCookie },
+    });
+    expect(res.statusCode).toBe(200);
+    const events = parseSse(res.body);
+    const sourcesEv = events.find((e) => e.event === 'sources');
+    expect(sourcesEv).toBeDefined();
+    const sources = sourcesEv!.data as Array<{ fileName: string }>;
+    expect(sources).toHaveLength(1);
+    expect(sources[0].fileName).toBe('alice-secret.md');
   });
 });
