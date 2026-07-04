@@ -320,6 +320,11 @@ sequenceDiagram
 
 ### Authenticated request (the middleware)
 
+The `onRequest` hook does **two** things, in order:
+
+1. **Always** attempt to parse the `dockhoj_sid` cookie. If a valid session row exists, look up the user and populate `request.user = { id, username, role }`. This runs on every path (including `/api/auth/*`) — `GET /api/auth/me` returns the user from a valid cookie and 401 otherwise (FR-7). Touching `last_seen_at` / `expires_at` for the rolling window also happens here.
+2. **Then** check whether the path is public (`/api/health`, `/api/auth/*`). If public, return. Otherwise, 401 when `request.user` is missing.
+
 ```mermaid
 sequenceDiagram
     participant U as Browser
@@ -334,14 +339,25 @@ sequenceDiagram
         MW->>DB: SELECT id, username, role FROM users WHERE id=?
         DB-->>MW: user row
         MW->>DB: UPDATE auth_sessions SET last_seen_at=datetime('now'), expires_at=datetime('now', '+30 days') WHERE id=?
-        MW->>H: request.user = { id, username, role }
+        MW->>MW: request.user = { id, username, role }
+        MW->>MW: path is protected → continue
+        MW->>H: request.user populated
         H-->>U: response
     else no/invalid/expired session
-        MW-->>U: 401 { error: "Authentication required" }
+        MW->>MW: request.user remains undefined
+        MW->>MW: path protected?
+        alt protected
+            MW-->>U: 401 { error: "Authentication required" }
+        else public (/api/auth/*, /api/health)
+            MW->>H: continue without user
+            H-->>U: response (or its own auth error, e.g. /me)
+        end
     end
 ```
 
-The `last_seen_at` + `expires_at` update is a single `UPDATE … WHERE id=?` per request. On the hot path this is one extra round-trip; it's amortized into the existing DB connection. Phase 04 does not cache session lookups in-process — the lookup is fast (PK index, single row), and an in-process cache would complicate the "delete user → kill all their sessions" admin flow.
+Originally this section described an early-return on public paths (before the user lookup). That conflicted with FR-7, since `GET /api/auth/me` needed `request.user` populated on a public path. The shipped T6 flow swaps the order: **populate first, gate second** — so public paths with valid cookies get `request.user` populated, and protected paths still 401 without it.
+
+Phase 04 does not cache session lookups in-process — the lookup is fast (PK index, single row), and an in-process cache would complicate the "delete user → kill all their sessions" admin flow.
 
 ### Visibility filter — applied to every Qdrant query
 
