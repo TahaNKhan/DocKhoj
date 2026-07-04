@@ -1,11 +1,19 @@
 import { Link, useLocation } from 'wouter-preact';
 import type { ServerStatus } from '../services/status';
+import { useAuth } from '../hooks/useAuth';
+import { UserMenu } from './UserMenu';
 
 // TopBar — brand mark + burger (mobile) + nav pills + status indicator.
 // The status pill is fed by /api/status (polled in App): it shows the
 // live chunk count from Qdrant and reflects Ollama reachability. While
 // the first poll is in flight we render an em-dash so the layout
 // doesn't jump.
+//
+// p4-T17 — the right-hand cluster (status pill + UserMenu) is wrapped
+// in .topright so the UserMenu chip lands next to the status pill when
+// the user is authenticated. UserMenu returns null while the auth
+// state is still loading or the visitor is anonymous, so the chip
+// doesn't flicker before RouteGuard bounces them to /login.
 
 interface Props {
   sidebarOpen: boolean;
@@ -15,8 +23,10 @@ interface Props {
 
 export function TopBar({ sidebarOpen, onToggleSidebar, status }: Props) {
   const [path] = useLocation();
+  const { status: authStatus } = useAuth();
   const isChat = path === '/' || path.startsWith('/chat');
   const isUpload = path.startsWith('/upload');
+  const showUserMenu = authStatus === 'authenticated';
 
   const reachable = status?.ollamaAvailable ?? null;
   const chunks = status?.chunks;
@@ -55,15 +65,18 @@ export function TopBar({ sidebarOpen, onToggleSidebar, status }: Props) {
         </Link>
       </nav>
 
-      <div class="topmeta" aria-live="polite">
-        <span
-          class="dot-live"
-          data-state={reachable === null ? 'loading' : reachable ? 'ok' : 'down'}
-        />
-        <span>
-          <span class="label">{reachable === false ? 'offline' : 'online'} · </span>
-          {chunksLabel} chunks
-        </span>
+      <div class="topright">
+        <div class="topmeta" aria-live="polite">
+          <span
+            class="dot-live"
+            data-state={reachable === null ? 'loading' : reachable ? 'ok' : 'down'}
+          />
+          <span>
+            <span class="label">{reachable === false ? 'offline' : 'online'} · </span>
+            {chunksLabel} chunks
+          </span>
+        </div>
+        {showUserMenu && <UserMenu />}
       </div>
     </header>
   );
