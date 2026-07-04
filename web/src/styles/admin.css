@@ -1,0 +1,413 @@
+/* p4-T19 — Admin pages (Users, Invites). Visual sibling to Upload
+ * (.upload-page / .upload-shell / .page-head / .section). The chrome
+ * (TopBar + status pill) is already in place from T17 — admin pages
+ * ride the same pipeline; admin-* classes are admin-specific add-ons
+ * only. */
+
+/* Page wrapper — same scrolling model as upload-page. */
+.admin-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.admin-shell {
+  width: 100%;
+  max-width: 1080px;
+  padding: 56px var(--pad) 96px;
+}
+
+/* Error surfaces (full-width and inline). */
+.admin-error {
+  padding: 16px 20px;
+  border-radius: var(--r);
+  background: rgba(226, 85, 64, 0.12);
+  border: 1px solid rgba(226, 85, 64, 0.35);
+  color: var(--cream);
+  font-size: 14px;
+  margin-bottom: 24px;
+}
+
+.admin-error.inline {
+  margin: 16px 0;
+}
+
+/* Users table. */
+.users-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  overflow: hidden;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--f-body);
+  font-size: 14px;
+  color: var(--fg);
+}
+
+.users-table thead th {
+  text-align: left;
+  padding: 14px 20px;
+  font-family: var(--f-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  background: rgba(244, 236, 225, 0.02);
+  border-bottom: 1px solid var(--border);
+}
+
+.users-table tbody td {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.users-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.users-table tbody tr {
+  transition: background 0.15s;
+}
+
+.users-table tbody tr:hover {
+  background: var(--surface-2);
+}
+
+.users-table-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.users-table-self {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--accent);
+  padding: 2px 6px;
+  border: 1px solid rgba(226, 85, 64, 0.35);
+  border-radius: 4px;
+}
+
+.users-table-sub {
+  color: var(--muted);
+  font-family: var(--f-mono);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+
+.users-table-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Role badge. */
+.role-badge {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.role-badge.role-admin {
+  color: #d8b76b;
+  border: 1px solid rgba(216, 183, 107, 0.4);
+  background: rgba(216, 183, 107, 0.08);
+}
+
+.role-badge.role-user {
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: rgba(244, 236, 225, 0.03);
+}
+
+/* Generic action buttons (used by tables + forms). */
+.doc-action {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 7px 14px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--fg-soft);
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.doc-action:hover:not(:disabled) {
+  border-color: var(--muted);
+  color: var(--cream);
+}
+
+.doc-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.doc-action.danger {
+  color: #f08775;
+  border-color: rgba(240, 135, 117, 0.35);
+}
+
+.doc-action.danger:hover:not(:disabled) {
+  background: rgba(197, 74, 58, 0.08);
+  border-color: #c54a3a;
+  color: var(--cream);
+}
+
+.doc-action.danger.confirm {
+  background: rgba(197, 74, 58, 0.12);
+  border-color: #c54a3a;
+}
+
+.doc-action.primary {
+  background: var(--accent);
+  color: var(--cream);
+  border-color: var(--accent);
+  box-shadow: 0 4px 14px rgba(226, 85, 64, 0.3);
+}
+
+.doc-action.primary:hover:not(:disabled) {
+  background: var(--accent-2);
+  border-color: var(--accent-2);
+  transform: translateX(1px);
+}
+
+.doc-action.primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* One-time token banner. */
+.token-banner {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 18px 22px;
+  margin-bottom: 24px;
+  background: linear-gradient(180deg, rgba(226, 85, 64, 0.12), rgba(226, 85, 64, 0.06));
+  border: 1px solid rgba(226, 85, 64, 0.45);
+  border-radius: var(--r-lg);
+  animation: rise 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.token-banner-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.token-banner-eyebrow {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+
+.token-banner-url {
+  font-family: var(--f-mono);
+  font-size: 13px;
+  color: var(--cream);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  border-radius: var(--r);
+  word-break: break-all;
+  user-select: all;
+  margin-bottom: 6px;
+}
+
+.token-banner-sub {
+  font-size: 12px;
+  color: var(--fg-soft);
+  line-height: 1.5;
+}
+
+.token-banner-sub b {
+  color: var(--cream);
+  font-weight: 500;
+}
+
+.token-banner-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Invite creation form. */
+.invite-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 16px 22px;
+  margin-bottom: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  flex-wrap: wrap;
+}
+
+.invite-form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.invite-select {
+  font-family: var(--f-body);
+  font-size: 14px;
+  color: var(--cream);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 8px 12px;
+  transition: 0.18s;
+  outline: 0;
+  min-width: 120px;
+}
+
+.invite-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.invite-select:disabled {
+  opacity: 0.5;
+}
+
+/* Modal: backdrop + card. No portal — the AdminUsers table is a
+ * static tree so a simple sibling overlay works. */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 9, 8, 0.7);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
+  z-index: 80;
+  padding: 24px;
+  animation: fade 0.15s ease-out;
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  padding: 28px 28px 22px;
+  animation: rise 0.25s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.modal-eyebrow {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.modal-title {
+  font-family: var(--f-display);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--cream);
+  letter-spacing: -0.01em;
+  margin-bottom: 6px;
+}
+
+.modal-sub {
+  color: var(--fg-soft);
+  font-size: 13px;
+  line-height: 1.55;
+  margin-bottom: 18px;
+}
+
+.modal-card form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.modal-card .auth-card-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.modal-card input {
+  font-family: var(--f-body);
+  font-size: 15px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  outline: 0;
+  transition: 0.18s;
+}
+
+.modal-card input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+@media (max-width: 720px) {
+  .token-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .token-banner-actions {
+    justify-content: flex-end;
+  }
+
+  .users-table thead th,
+  .users-table tbody td {
+    padding: 12px 14px;
+  }
+}

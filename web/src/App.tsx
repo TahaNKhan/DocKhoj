@@ -8,6 +8,8 @@ import { Upload } from './routes/Upload';
 import { Login } from './routes/Login';
 import { Register } from './routes/Register';
 import { InviteAccept } from './routes/InviteAccept';
+import { AdminUsers } from './routes/AdminUsers';
+import { AdminInvites } from './routes/AdminInvites';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import {
   listSessions,
@@ -374,6 +376,16 @@ function Chrome() {
           <Route path="/upload">
             <RouteGuard>
               <Upload />
+            </RouteGuard>
+          </Route>
+          <Route path="/admin/users">
+            <RouteGuard requireRole="admin">
+              <AdminUsers />
+            </RouteGuard>
+          </Route>
+          <Route path="/admin/invites">
+            <RouteGuard requireRole="admin">
+              <AdminInvites />
             </RouteGuard>
           </Route>
         </Switch>
