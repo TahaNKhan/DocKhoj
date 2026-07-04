@@ -18,6 +18,7 @@ import { openDb } from './db/index.js';
 import { migrate } from './db/migrate.js';
 import { mountSpa } from './server/spa.js';
 import { log } from './utils/logger.js';
+import { authPlugin } from './services/auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,6 +73,12 @@ export async function buildApp() {
   // sessions) registers. Order matters — encapsulated children only
   // see decorations made on the parent before they're registered.
   fastify.decorate('db', openDb());
+
+  // p4-T05 / FR-20: session middleware. Registered before every
+  // /api/* route plugin so request.user is populated before any
+  // handler runs. The plugin itself exempts /api/auth/* and
+  // /api/health internally.
+  await fastify.register(authPlugin);
 
   await fastify.register(uploadRoutes);
   await fastify.register(searchRoutes);
