@@ -208,7 +208,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Vitest: simulate the agent-loop running one tool call per type against a foreign fileId and verify the result is opaque.
 - **Dependencies.** T11.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T13. Cross-user retrieval integration test
 
