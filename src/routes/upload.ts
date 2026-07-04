@@ -1,5 +1,4 @@
-import { FastifyInstance } from 'fastify';
-import { pipeline } from 'stream/promises';
+import { FastifyInstance, FastifyRequest } from 'fastify';
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
@@ -7,7 +6,12 @@ import { v4 as uuidv4 } from 'uuid';
 import type Database from 'better-sqlite3';
 import { parseFile } from '../services/parser.js';
 import { embedText, embedTexts } from '../services/embed.js';
-import { upsertChunks, type DocumentChunk } from '../services/qdrant.js';
+import {
+  upsertChunks,
+  setOwnerVisibility,
+  type DocumentChunk,
+  type Visibility,
+} from '../services/qdrant.js';
 import { DocumentStore } from '../services/document-store.js';
 import { chunkBlocks } from '../utils/chunk.js';
 import { truncateForLog, uploadLog as log } from '../utils/logger.js';
@@ -16,6 +20,11 @@ type DB = Database.Database;
 
 const UPLOAD_DIR = './documents';
 const BATCH_SIZE = 10;
+
+// Phase 04 / p4-T09 / FR-27 — visibility whitelist. Anything outside
+// this set (including the missing-field default) is normalized below.
+const VALID_VISIBILITY: readonly Visibility[] = ['public', 'private'];
+const DEFAULT_VISIBILITY: Visibility = 'private';
 
 // Upload progress strategy (replaces the earlier p2-p1-T14 SSE approach):
 //   - Transport progress (file bytes flowing from the browser to the
@@ -47,7 +56,11 @@ async function processUpload(
   fileName: string,
   fileId: string,
   parsed: Awaited<ReturnType<typeof parseFile>>,
-  db: DB
+  db: DB,
+  // Phase 04 / p4-T09 / FR-27/29/30 — owner + visibility threaded
+  // through so the SQLite row and Qdrant chunks get stamped.
+  ownerId: string | null,
+  visibility: Visibility
 ): Promise<ProcessUploadResult> {
   const chunkMaxTokens = parseInt(process.env.CHUNK_MAX_TOKENS || '512');
   const chunkOverlap = parseInt(process.env.CHUNK_OVERLAP_TOKENS || '64');
@@ -103,6 +116,25 @@ async function processUpload(
       }
     }
 
+    // Phase 04 / p4-T09 / FR-29/30 — stamp ownerId + visibility on
+    // every Qdrant chunk of this file. Runs AFTER all batches have
+    // been upserted so the filter finds every chunk. Failure here
+    // means the chunks are public-but-otherwise-present; the
+    // existing row+disk cleanup below returns 500 and the SPA
+    // retries. setOwnerVisibility's fileId arg is the on-disk
+    // basename (`${fileId}${ext}`), which equals path.basename(filePath).
+    try {
+      await setOwnerVisibility(path.basename(filePath), ownerId, visibility);
+    } catch (err) {
+      log.error({ err, fileName, fileId }, 'Failed to stamp owner/visibility on chunks');
+      return {
+        status: 'failed',
+        fileName,
+        fileId,
+        error: 'Failed to stamp owner/visibility',
+      };
+    }
+
     // Phase 03 / p3-T01: record the document in SQLite so the
     // Documents list can show it and DELETE /api/documents/:fileId
     // can find the row. Insert AFTER the Qdrant upsert succeeds so
@@ -121,6 +153,8 @@ async function processUpload(
         bytes,
         uploadedAt: nowSqlite(),
         chunkCount: totalIndexed,
+        ownerId,
+        visibility,
       });
     } catch (err) {
       log.error({ err, fileName, fileId }, 'Failed to record document row');
@@ -151,7 +185,7 @@ async function processUpload(
 }
 
 async function saveUploadedFile(
-  data: { filename: string; file: NodeJS.ReadableStream; toBuffer?: () => Promise<Buffer> }
+  data: { filename: string; content: Buffer }
 ): Promise<{ filePath: string; fileId: string; fileName: string; ext: string }> {
   const fileName = data.filename;
   const ext = path.extname(fileName).toLowerCase();
@@ -159,12 +193,7 @@ async function saveUploadedFile(
   const internalFileName = `${fileId}${ext}`;
   const filePath = path.join(UPLOAD_DIR, internalFileName);
 
-  if (data.toBuffer) {
-    const buf = await data.toBuffer();
-    await fs.writeFile(filePath, buf);
-  } else {
-    await pipeline(data.file, fsSync.createWriteStream(filePath));
-  }
+  await fs.writeFile(filePath, data.content);
 
   return { filePath, fileId, fileName, ext };
 }
@@ -174,21 +203,56 @@ export async function uploadRoutes(fastify: FastifyInstance) {
   const db = (fastify as unknown as { db: DB }).db;
 
   // POST /api/upload — single file (FR-25).
-  fastify.post('/api/upload', async (request, reply) => {
+  fastify.post('/api/upload', async (request: FastifyRequest, reply) => {
     log.info('Received upload request');
-    const data = await request.file();
 
-    if (!data) {
+    // Phase 04 / p4-T09 / FR-27 — parse the multipart parts up
+    // front. We use parts() rather than file() so the visibility
+    // field is available regardless of form-field ordering (the
+    // busboy-based parser only finalizes the fields map AFTER the
+    // file stream is consumed — see @fastify/multipart README).
+    // The file stream must be consumed before the for-await loop
+    // exits, otherwise the multipart parser hangs waiting for the
+    // rest of the file bytes — so we buffer the first file part
+    // eagerly and skip any further file parts.
+    let fileBuf: Buffer | undefined;
+    let fileNameFromPart: string | undefined;
+    let visibilityRaw: string | undefined;
+    for await (const part of request.parts()) {
+      if (part.type === 'file') {
+        if (fileBuf === undefined) {
+          fileBuf = await part.toBuffer();
+          fileNameFromPart = part.filename;
+        }
+      } else if (part.fieldname === 'visibility') {
+        visibilityRaw = part.value as string;
+      }
+    }
+
+    if (fileBuf === undefined || fileNameFromPart === undefined) {
       log.warn('No file in request');
       return reply.status(400).send({ error: 'No file uploaded' });
     }
 
+    // Phase 04 / p4-T09 / FR-27 — visibility defaults to 'private'
+    // when the field is absent; anything else is a 400.
+    const visibility: Visibility = (visibilityRaw ?? DEFAULT_VISIBILITY) as Visibility;
+    if (!VALID_VISIBILITY.includes(visibility)) {
+      return reply.status(400).send({
+        error: `Invalid visibility: must be one of ${VALID_VISIBILITY.join(', ')}`,
+      });
+    }
+
+    // authPlugin (registered before this plugin) guarantees
+    // request.user on /api/upload. The non-null assertion is a
+    // type-level contract — the 401 path lives in the middleware.
+    const user = request.user!;
+
     let saved: { filePath: string; fileId: string; fileName: string; ext: string };
     try {
       saved = await saveUploadedFile({
-        filename: data.filename,
-        file: data.file,
-        toBuffer: data.toBuffer,
+        filename: fileNameFromPart,
+        content: fileBuf,
       });
     } catch (err) {
       log.error({ err }, 'Failed to save uploaded file');
@@ -210,7 +274,7 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       return reply.status(400).send({ error: message });
     }
 
-    const result = await processUpload(filePath, fileName, fileId, parsed, db);
+    const result = await processUpload(filePath, fileName, fileId, parsed, db, user.id, visibility);
 
     if (result.status === 'failed') {
       await fs.unlink(filePath).catch(() => {});
@@ -228,42 +292,47 @@ export async function uploadRoutes(fastify: FastifyInstance) {
       fileName,
       chunksIndexed: result.chunksIndexed,
       fileId,
+      // Phase 04 / p4-T09 / FR-28 — response gains ownerUsername
+      // and visibility so the SPA can render the chip without a
+      // follow-up GET.
+      ownerUsername: user.username,
+      visibility,
     };
   });
 
   // POST /api/upload/batch — multi-file.
   fastify.post('/api/upload/batch', async (request, reply) => {
     log.info('Received batch upload request');
+    // authPlugin guarantees request.user on /api/upload/batch.
+    const user = request.user!;
     const files: ProcessUploadResult[] = [];
 
-    const parts: Array<{
-      type: string;
-      filename?: string;
-      file?: NodeJS.ReadableStream;
-      toBuffer?: () => Promise<Buffer>;
-    }> = [];
+    // Same multipart-stream-consumption rule as /api/upload: drain
+    // every file part's bytes INSIDE the for-await loop, or the
+    // busboy parser hangs waiting for the rest of the body.
+    type CollectedPart = { filename: string; content: Buffer };
+    const collected: CollectedPart[] = [];
 
     for await (const part of request.parts()) {
-      parts.push(part);
+      if (part.type === 'file' && part.filename) {
+        const content = await part.toBuffer();
+        collected.push({ filename: part.filename, content });
+      }
     }
 
-    const fileParts = parts.filter((p) => p.type === 'file');
-
     const concurrency = parseInt(process.env.EMBEDDING_CONCURRENCY || '4');
-    const queue = [...fileParts];
+    const queue = [...collected];
 
     const workers = Array.from({ length: Math.min(concurrency, queue.length || 1) }, async () => {
       while (queue.length > 0) {
         const part = queue.shift();
         if (!part) break;
-        if (!part.filename || !part.file) continue;
 
         let saved: { filePath: string; fileId: string; fileName: string; ext: string };
         try {
           saved = await saveUploadedFile({
             filename: part.filename,
-            file: part.file,
-            toBuffer: part.toBuffer,
+            content: part.content,
           });
         } catch (err) {
           log.error({ err, fileName: part.filename }, 'Failed to save uploaded file');
@@ -278,7 +347,18 @@ export async function uploadRoutes(fastify: FastifyInstance) {
 
         try {
           const parsed = await parseFile(saved.filePath);
-          const result = await processUpload(saved.filePath, saved.fileName, saved.fileId, parsed, db);
+          // Phase 04 / p4-T09 — batch uploads don't take a
+          // per-file visibility field; default to 'private' so each
+          // file gets the owner stamp + visibility set.
+          const result = await processUpload(
+            saved.filePath,
+            saved.fileName,
+            saved.fileId,
+            parsed,
+            db,
+            user.id,
+            DEFAULT_VISIBILITY
+          );
           if (result.status === 'failed') {
             await fs.unlink(saved.filePath).catch(() => {});
           }

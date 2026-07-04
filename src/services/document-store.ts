@@ -47,6 +47,9 @@ interface OwnedDocumentDbRow {
   visibility: string;
 }
 
+// Phase 04 / p4-T09 / FR-27 — owner_id + visibility stamped from
+// the authenticated user + the upload form field. The read side
+// (DocumentRow.ownerId/visibility) is added in T11 (GET /api/documents).
 export interface InsertDocument {
   fileId: string;
   fileName: string;
@@ -54,6 +57,8 @@ export interface InsertDocument {
   bytes: number;
   uploadedAt: string;
   chunkCount: number;
+  ownerId: string | null;
+  visibility: 'public' | 'private';
 }
 
 export class DocumentStore {
@@ -67,8 +72,8 @@ export class DocumentStore {
     this.db
       .prepare(
         `INSERT INTO documents
-           (file_id, file_name, file_type, bytes, uploaded_at, chunk_count)
-         VALUES (?, ?, ?, ?, ?, ?)`
+           (file_id, file_name, file_type, bytes, uploaded_at, chunk_count, owner_id, visibility)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         row.fileId,
@@ -76,7 +81,9 @@ export class DocumentStore {
         row.fileType,
         row.bytes,
         row.uploadedAt,
-        row.chunkCount
+        row.chunkCount,
+        row.ownerId,
+        row.visibility
       );
   }
 

@@ -49,6 +49,8 @@ describe('GET /api/status', () => {
       bytes: 1,
       uploadedAt: '2026-07-01 10:00:00',
       chunkCount: 1,
+    ownerId: null,
+    visibility: 'public',
     });
     app.decorate('db', db);
     await app.register(statusRoutes);
