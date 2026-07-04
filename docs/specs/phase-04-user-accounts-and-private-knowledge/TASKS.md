@@ -226,7 +226,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - `npm test -- --run tests/e2e/cross-user-retrieval.test.ts` passes.
 - **Dependencies.** T11, T12.
 - **Estimate.** L.
-- **Status.** todo.
+- **Status.** done.
 
 ## T14. Migration 006 (chat sessions ownership + delete legacy) + conversation scoping
 
@@ -261,7 +261,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Vitest covers both paths.
 - **Dependencies.** T11.
 - **Estimate.** S.
-- **Status.** todo.
+- **Status.** done.
 
 ## T16. SPA: auth service + useAuth + Login/Register/InviteAccept + RouteGuard
 
