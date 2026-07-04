@@ -161,7 +161,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Sending `visibility=foo` returns 400.
 - **Dependencies.** T8.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## T10. Documents endpoints + download scoped
 
@@ -180,7 +180,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Vitest tests for each.
 - **Dependencies.** T9.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## T11. Search + chat visibility
 
@@ -196,7 +196,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - The chat-stream test uses a real SSE consumer and asserts no chunks from the private file leak via the `sources` event.
 - **Dependencies.** T10.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## T12. Agent tools visibility
 
@@ -208,7 +208,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Vitest: simulate the agent-loop running one tool call per type against a foreign fileId and verify the result is opaque.
 - **Dependencies.** T11.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## T13. Cross-user retrieval integration test
 
@@ -226,7 +226,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - `npm test -- --run tests/e2e/cross-user-retrieval.test.ts` passes.
 - **Dependencies.** T11, T12.
 - **Estimate.** L.
-- **Status.** done.
+- **Status.** todo.
 
 ## T14. Migration 006 (chat sessions ownership + delete legacy) + conversation scoping
 
@@ -247,7 +247,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - User A's session list grows when they create new conversations; user B's doesn't.
 - **Dependencies.** T10.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## T15. /api/status user-scoped
 
@@ -261,7 +261,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Vitest covers both paths.
 - **Dependencies.** T11.
 - **Estimate.** S.
-- **Status.** done.
+- **Status.** todo.
 
 ## T16. SPA: auth service + useAuth + Login/Register/InviteAccept + RouteGuard
 
@@ -293,7 +293,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Unauthenticated visit to `/upload` redirects to `/login?next=/upload`.
 - **Dependencies.** T16.
 - **Estimate.** S.
-- **Status.** done.
+- **Status.** todo.
 
 ## T18. SPA: VisibilityToggle on upload + DocumentsList owner column
 
@@ -310,7 +310,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Component tests cover both chips and the owner rendering.
 - **Dependencies.** T10.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## T19. SPA: AdminUsers + AdminInvites
 
@@ -330,7 +330,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Component tests.
 - **Dependencies.** T7, T17.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## T20. .env.example + README updates
 
@@ -347,7 +347,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - README has the new section; `./restart.sh` boots cleanly after the doc changes (no code change in this task).
 - **Dependencies.** T19.
 - **Estimate.** S.
-- **Status.** done.
+- **Status.** todo.
 
 ## T21. Final E2E walkthrough + commit
 
@@ -361,7 +361,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - The branch is committed; no uncommitted work; commit messages reference the task IDs (e.g. `feat(phase-4): register + login routes (p4-T06)`).
 - **Dependencies.** T20.
 - **Estimate.** M.
-- **Status.** done.
+- **Status.** todo.
 
 ## Dependency graph
 
