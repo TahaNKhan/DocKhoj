@@ -77,3 +77,81 @@ export async function fetchAuthStatus(): Promise<{ firstUserAvailable: boolean }
   if (!res.ok) throw new Error(await readError(res));
   return (await res.json()) as { firstUserAvailable: boolean };
 }
+
+// p4-T19 — admin service calls. Kept inside auth.ts (one service
+// file per route family, matching how documents.ts / sessions.ts
+// are split). Each call sends credentials: 'include' (HttpOnly
+// cookie). `createInvite` returns the one-time token; the others
+// throw on non-2xx (the SPA components handle that).
+
+export interface AdminUser {
+  id: string;
+  username: string;
+  role: 'admin' | 'user';
+  createdAt: string;
+  lastLoginAt: string | null;
+}
+
+export interface AdminInvite {
+  id: string;
+  createdBy: string;
+  createdAt: string;
+  expiresAt: string;
+  usedBy: string | null;
+  usedAt: string | null;
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const res = await fetch(path, { credentials: 'include' });
+  if (!res.ok) throw new Error(await readError(res));
+  return (await res.json()) as T;
+}
+
+async function delOrThrow(path: string): Promise<void> {
+  const res = await fetch(path, { method: 'DELETE', credentials: 'include' });
+  if (!res.ok) throw new Error(await readError(res));
+}
+
+// GET /api/admin/users — FR-15.
+export async function listUsers(): Promise<AdminUser[]> {
+  return getJson<AdminUser[]>('/api/admin/users');
+}
+
+// DELETE /api/admin/users/:id — FR-16. 400 if the target is the
+// caller; the SPA disables the button, but the server enforces.
+export async function deleteUser(id: string): Promise<{ success: true; documentsDeleted: number }> {
+  const res = await fetch(`/api/admin/users/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+// POST /api/admin/users/:id/password — FR-17. Also revokes all of
+// that user's sessions (the user must re-login on next request).
+export async function resetPassword(id: string, password: string): Promise<{ success: true }> {
+  return postJson<{ success: true }>(`/api/admin/users/${encodeURIComponent(id)}/password`, {
+    password,
+  });
+}
+
+// GET /api/admin/invites — FR-11. Excludes the raw token (only the
+// hash is stored; the token is shown ONCE on creation).
+export async function listInvites(): Promise<AdminInvite[]> {
+  return getJson<AdminInvite[]>('/api/admin/invites');
+}
+
+// POST /api/admin/invites — FR-10. Returns the one-time raw token.
+export async function createInvite(expiresInDays = 7): Promise<{
+  id: string;
+  token: string;
+  expiresAt: string;
+}> {
+  return postJson('/api/admin/invites', { expiresInDays });
+}
+
+// DELETE /api/admin/invites/:id — FR-12. 404 if no such invite.
+export async function revokeInvite(id: string): Promise<void> {
+  await delOrThrow(`/api/admin/invites/${encodeURIComponent(id)}`);
+}

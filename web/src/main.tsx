@@ -15,6 +15,7 @@ import './styles/bubble.css';
 import './styles/composer.css';
 import './styles/upload.css';
 import './styles/auth.css';
+import './styles/admin.css';
 
 const root = document.getElementById('app');
 if (!root) throw new Error('#app root not found');
