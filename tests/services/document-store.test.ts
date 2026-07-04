@@ -165,14 +165,28 @@ describe('DocumentStore', () => {
     expect(store.delete('nope')).toBe(false);
   });
 
-  it('count reflects the number of rows', () => {
-    expect(store.count()).toBe(0);
-    store.insert(row({ fileId: 'a', fileName: 'a.md', ownerId: aliceId }));
-    expect(store.count()).toBe(1);
-    store.insert(row({ fileId: 'b', fileName: 'b.md', uploadedAt: '2026-07-01 10:00:01', ownerId: aliceId }));
-    expect(store.count()).toBe(2);
-    store.delete('a');
-    expect(store.count()).toBe(1);
+  it('count returns the number of rows visible to the viewer (own + shared)', () => {
+    // Per p4-T15, count() now scopes by viewerId. The 4 doc rows:
+    //   alice-private → alice only
+    //   alice-public  → alice + bob (public → shared-after-public-row)
+    //   bob-private   → bob only
+    //   bob-public    → bob + alice
+    store.insert(row({ fileId: 'alice-private', fileName: 'a1.md', ownerId: aliceId, visibility: 'private' }));
+    store.insert(row({ fileId: 'alice-public', fileName: 'a2.md', ownerId: aliceId, visibility: 'public' }));
+    store.insert(row({ fileId: 'bob-private', fileName: 'b1.md', ownerId: bobId, visibility: 'private' }));
+    store.insert(row({ fileId: 'bob-public', fileName: 'b2.md', ownerId: bobId, visibility: 'public' }));
+    expect(store.count(aliceId)).toBe(3);
+    expect(store.count(bobId)).toBe(3);
+    // An empty viewerId still matches shared (owner_id IS NULL).
+    expect(store.count('')).toBe(0);
+  });
+
+  it('count hides foreign private files from the viewer', () => {
+    store.insert(row({ fileId: 'alice-private', fileName: 'a.md', ownerId: aliceId, visibility: 'private' }));
+    store.insert(row({ fileId: 'bob-private', fileName: 'b.md', ownerId: bobId, visibility: 'private' }));
+    // Bob should not see Alice's private file in the documents count.
+    expect(store.count(bobId)).toBe(0);
+    expect(store.count(aliceId)).toBe(1);
   });
 
   it('handles two uploads of the same original filename with distinct fileIds', () => {

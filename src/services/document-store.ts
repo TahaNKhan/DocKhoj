@@ -172,11 +172,21 @@ export class DocumentStore {
     return result.changes > 0;
   }
 
-  /** Count of rows. Used by /api/status for the TopBar chrome. */
-  count(): number {
+  /** Count of documents the viewer can see (p4-T15 / FR-15 /
+   *  FR-20): shared rows + the viewer's own private rows. Used by
+   *  /api/status for the TopBar chrome so the badge reflects what
+   *  the user actually has access to. Empty result counts as 0,
+   *  not null. The `viewerId` argument is required — call sites
+   *  that want the global count can pass the empty string
+   *  (mirrors Phase 03 behavior — see
+   *  isDocumentVisibleTo in agent-tools.ts for the rule). */
+  count(viewerId: string): number {
     const row = this.db
-      .prepare(`SELECT COUNT(*) AS c FROM documents`)
-      .get() as { c: number };
+      .prepare(
+        `SELECT COUNT(*) AS c FROM documents
+         WHERE owner_id = ? OR owner_id IS NULL`
+      )
+      .get(viewerId) as { c: number };
     return row.c;
   }
 
