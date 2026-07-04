@@ -109,16 +109,27 @@ function DocumentRow({
   const size = fmtSize(doc.bytes);
   const uploadedLabel = fmtRelative(doc.uploadedAt);
   const extLabel = (doc.fileType || 'file').toUpperCase().slice(0, 4);
+  // p4-T18: null-owner means the file is shared (legacy owner_id IS
+  // NULL rows). Render the literal "Shared" so the column is never
+  // blank — important because the user must be able to tell at a
+  // glance whether a row is theirs to delete.
+  const ownerLabel = doc.ownerUsername ?? 'Shared';
 
   return (
     <li class={`docrow${isConfirming ? ' confirming' : ''}${hasError ? ' errored' : ''}`}>
       <div class="ext">{extLabel}</div>
       <div class="meta">
-        <div class="name">{doc.fileName}</div>
+        <div class="name">
+          {doc.fileName}
+          <span class={`vis-chip vis-${doc.visibility}`} title={doc.visibility === 'public' ? 'Visible to all users' : 'Visible only to you'}>
+            {doc.visibility === 'public' ? 'Public' : 'Private'}
+          </span>
+        </div>
         <div class="sub">
           {size}
           {doc.chunkCount > 0 && <> · ~{doc.chunkCount} chunks</>}
           <> · {uploadedLabel}</>
+          <> · by <span class="owner">{ownerLabel}</span></>
         </div>
       </div>
       <div class="actions">
