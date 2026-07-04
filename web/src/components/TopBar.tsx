@@ -1,7 +1,9 @@
+import { useState, useEffect } from 'preact/hooks';
 import { Link, useLocation } from 'wouter-preact';
 import type { ServerStatus } from '../services/status';
 import { useAuth } from '../hooks/useAuth';
 import { UserMenu } from './UserMenu';
+import { setTheme, getStoredTheme, applyTheme } from '../services/theme';
 
 // TopBar — brand mark + burger (mobile) + nav pills + status indicator.
 // The status pill is fed by /api/status (polled in App): it shows the
@@ -15,6 +17,8 @@ import { UserMenu } from './UserMenu';
 // state is still loading or the visitor is anonymous, so the chip
 // doesn't flicker before RouteGuard bounces them to /login.
 
+type Theme = 'dark' | 'light';
+
 interface Props {
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
@@ -27,6 +31,33 @@ export function TopBar({ sidebarOpen, onToggleSidebar, status }: Props) {
   const isChat = path === '/' || path.startsWith('/chat');
   const isUpload = path.startsWith('/upload');
   const showUserMenu = authStatus === 'authenticated';
+
+  const [theme, setThemeState] = useState<Theme>(getStoredTheme());
+
+  // sync the <html> data-theme attribute every render (catches live
+  // OS-preference changes that the main.tsx listener applies).
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  // re-read from storage when the OS-preference listener in main.tsx
+  // fires (it calls applyTheme but doesn't set our local state).
+  useEffect(() => {
+    const handler = () => {
+      if (!localStorage.getItem('dockhoj:theme')) {
+        setThemeState(getStoredTheme());
+      }
+    };
+    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', handler);
+    return () =>
+      window.matchMedia('(prefers-color-scheme: light)').removeEventListener('change', handler);
+  }, []);
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    setThemeState(next);
+  }
 
   const reachable = status?.ollamaAvailable ?? null;
   const chunks = status?.chunks;
@@ -66,6 +97,14 @@ export function TopBar({ sidebarOpen, onToggleSidebar, status }: Props) {
       </nav>
 
       <div class="topright">
+        <button
+          type="button"
+          class="theme-toggle"
+          aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+          onClick={toggleTheme}
+        >
+          {theme === 'dark' ? '\u2600' : '\u263E'}
+        </button>
         <div class="topmeta" aria-live="polite">
           <span
             class="dot-live"

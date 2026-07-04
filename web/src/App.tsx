@@ -52,8 +52,9 @@ export function App() {
 }
 
 function Chrome() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const isChatRoute = location === '/' || location.startsWith('/chat');
+  const isUploadRoute = location.startsWith('/upload');
 
   const [sessions, setSessions] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -150,7 +151,7 @@ function Chrome() {
   }, [isChatRoute]);
 
   async function selectSession(id: string) {
-    if (id === activeId) return;
+    if (id === activeId && isChatRoute) return;
     streamRef.current?.close();
     setPending(null);
     saveActiveSessionId(id);
@@ -158,9 +159,10 @@ function Chrome() {
     setMessages([]);
     const msgs = await listMessages(id);
     setMessages(msgs);
-    // Close the mobile sidebar after picking a session — same effect as
-    // the route-change close, but explicit so it feels instant.
     setSidebarOpen(false);
+    // If we're not on the chat page, navigate there so the user sees
+    // the conversation they just selected.
+    if (!isChatRoute) setLocation('/chat');
   }
 
   async function handleCreate() {
@@ -324,8 +326,8 @@ function Chrome() {
         </>
       )}
 
-      <main class={!isAuthPage && isChatRoute ? 'layout' : ''}>
-        {!isAuthPage && isChatRoute && (
+      <main class={!isAuthPage && (isChatRoute || isUploadRoute) ? 'layout' : ''}>
+        {!isAuthPage && (isChatRoute || isUploadRoute) && (
           <>
             <Sidebar
               sessions={sessions}

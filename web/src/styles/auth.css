@@ -20,6 +20,13 @@
     radial-gradient(55% 42% at 50% 115%, rgba(226, 85, 64, 0.12), transparent 60%);
 }
 
+[data-theme="light"] .auth-page {
+  background:
+    radial-gradient(50% 40% at 18% 0%, rgba(184, 57, 31, 0.10), transparent 60%),
+    radial-gradient(40% 30% at 92% 8%, rgba(210, 77, 51, 0.06), transparent 60%),
+    radial-gradient(60% 30% at 50% 100%, rgba(184, 57, 31, 0.05), transparent 60%);
+}
+
 .auth-card {
   width: 100%;
   max-width: 420px;
@@ -28,6 +35,10 @@
   border: 1px solid var(--border);
   border-radius: var(--r-xl);
   box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+[data-theme="light"] .auth-card {
+  box-shadow: 0 16px 48px rgba(60, 40, 20, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .auth-card .brand {

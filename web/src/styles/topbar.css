@@ -17,6 +17,10 @@
   background: rgba(10, 9, 8, 0.7);
 }
 
+[data-theme="light"] .topbar {
+  background: rgba(246, 239, 225, 0.5);
+}
+
 /* Burger button — hidden on desktop, visible ≤ 960 px to open the
    sidebar overlay. Three stacked <span class="bar"> lines animate
    into an X when the sidebar is open (.burger.open below). */
@@ -140,6 +144,32 @@
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+[data-theme="light"] .topnav a.active {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+/* Theme toggle — sun/moon button next to the status pill. */
+.theme-toggle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  display: grid;
+  place-items: center;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .topmeta {
   display: flex;
   align-items: center;
@@ -231,6 +261,10 @@
   animation: rise 0.18s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
+[data-theme="light"] .user-menu-pop {
+  box-shadow: 0 16px 36px rgba(60, 40, 20, 0.12), 0 4px 10px rgba(60, 40, 20, 0.08);
+}
+
 .user-menu-item {
   appearance: none;
   background: transparent;
@@ -278,12 +312,11 @@
     margin-right: 12px;
   }
 
-  /* Hide the brand name (keep just the mark icon) and the
-     "online/offline" label so the live chunk count + nav pills still
-     fit on a 360px-wide viewport. The Chat/Upload nav stays visible
-     — it's the primary way users move between the two surfaces. */
-  .topmeta .label,
-  .brand-name {
+  /* Hide the entire brand (mark + name move to the sidebar) and the
+     status meta (dot + online/offline + chunk count) so nav pills +
+     theme toggle still fit on a 360px-wide viewport. */
+  .brand,
+  .topmeta {
     display: none;
   }
 

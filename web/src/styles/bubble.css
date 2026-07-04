@@ -49,6 +49,16 @@
   overflow-wrap: break-word;
 }
 
+.bubble .text ul,
+.bubble .text ol {
+  padding-left: 1.5em;
+  margin: 8px 0;
+}
+
+.bubble .text li {
+  margin-bottom: 4px;
+}
+
 .bubble .text b {
   color: var(--cream);
   font-weight: 600;
@@ -83,6 +93,10 @@
   border-color: var(--border);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.03);
   position: relative;
+}
+
+[data-theme="light"] .bubble.ai .text {
+  box-shadow: 0 12px 32px rgba(60, 40, 20, 0.10), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .bubble.ai .text::before {
@@ -331,6 +345,10 @@
   animation: fade-in 0.18s ease-out;
 }
 
+[data-theme="light"] .drawer-backdrop {
+  background: rgba(60, 40, 20, 0.3);
+}
+
 @keyframes fade-in {
   from {
     opacity: 0;
@@ -353,6 +371,10 @@
   flex-direction: column;
   animation: drawer-in 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
   box-shadow: -24px 0 48px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="light"] .source-drawer {
+  box-shadow: -24px 0 48px rgba(60, 40, 20, 0.12);
 }
 
 @keyframes drawer-in {
@@ -475,6 +497,11 @@
   margin: 12px 0;
 }
 
+[data-theme="light"] .source-drawer .chunk pre {
+  background: #f6efe1;
+  border-color: var(--border);
+}
+
 .source-drawer .chunk pre code {
   background: none;
   padding: 0;
@@ -538,6 +565,11 @@
   border-bottom: 1px solid var(--border);
   background: rgba(8, 6, 4, 0.25);
   max-height: 40vh;
+}
+
+[data-theme="light"] .doc-source-drawer .doc-chunk-list {
+  background: rgba(60, 40, 20, 0.04);
+}
   overflow-y: auto;
 }
 

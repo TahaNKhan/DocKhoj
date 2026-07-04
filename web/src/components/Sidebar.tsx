@@ -20,6 +20,12 @@ interface Props {
 export function Sidebar({ sessions, activeId, open, onClose, onSelect, onCreate, onRename, onDelete }: Props) {
   return (
     <aside id="sidebar" class={`side${open ? ' open' : ''}`}>
+      <div class="side-brand">
+        <span class="brand-mark" />
+        <span class="brand-name">
+          DocKhoj<i>.</i>
+        </span>
+      </div>
       <div>
         <h4>
           Sessions{' '}

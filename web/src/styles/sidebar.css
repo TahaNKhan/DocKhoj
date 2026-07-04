@@ -15,6 +15,10 @@
   background: linear-gradient(180deg, rgba(22, 19, 17, 0.6), rgba(22, 19, 17, 0.2));
 }
 
+[data-theme="light"] .side {
+  background: linear-gradient(180deg, rgba(239, 231, 212, 0.55), rgba(239, 231, 212, 0.2));
+}
+
 .side h4 {
   font-family: var(--f-mono);
   font-size: 10px;
@@ -55,6 +59,10 @@
   background: var(--surface-2);
   border-color: var(--border);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="light"] .session.active {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 .session.active::before {
@@ -206,6 +214,10 @@
   background: rgba(10, 9, 8, 0.4);
 }
 
+[data-theme="light"] .toolbar {
+  background: rgba(246, 239, 225, 0.5);
+}
+
 .toolbar .crumb {
   font-size: 12px;
   color: var(--muted);
@@ -268,6 +280,10 @@
   gap: 28px;
   scroll-behavior: smooth;
   background: radial-gradient(80% 50% at 50% 0%, rgba(244, 236, 225, 0.02), transparent 60%);
+}
+
+[data-theme="light"] .stream {
+  background: radial-gradient(80% 50% at 50% 0%, rgba(184, 57, 31, 0.04), transparent 60%);
 }
 
 /* Side scrim — only painted when the mobile sidebar is open. Sits
@@ -379,6 +395,11 @@
   color: var(--cream);
 }
 
+[data-theme="light"] .expand-toggle .mode-popover button[role="option"]:hover {
+  background: rgba(28, 19, 10, 0.05);
+  color: var(--cream);
+}
+
 .expand-toggle .mode-popover button[role="option"]:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
@@ -387,6 +408,10 @@
 .expand-toggle .mode-popover button[role="option"].selected {
   background: rgba(226, 85, 64, 0.10);
   color: var(--cream);
+}
+
+[data-theme="light"] .expand-toggle .mode-popover button[role="option"].selected {
+  background: rgba(184, 57, 31, 0.10);
 }
 
 .expand-toggle .mode-popover .mode-name {
@@ -440,6 +465,58 @@
     border-right: 1px solid var(--border);
   }
 
+  /* Brand mark + name at the top of the mobile sidebar. */
+  .side-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--border);
+    font-family: var(--f-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .side-brand .brand-mark {
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, var(--accent), #8a2818);
+    box-shadow: 0 0 28px var(--warm-glow), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .side-brand .brand-mark::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 50%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.18), transparent);
+  }
+
+  .side-brand .brand-mark::after {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    border-radius: 2px;
+    background: var(--cream);
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+  }
+
+  .side-brand .brand-name {
+    font-size: 18px;
+  }
+
+  .side-brand .brand-name i {
+    color: var(--accent);
+    font-style: italic;
+    font-weight: 400;
+  }
+
   .side.open {
     transform: translateX(0);
   }
@@ -457,9 +534,17 @@
     -webkit-backdrop-filter: blur(2px);
   }
 
+  [data-theme="light"] .side-scrim {
+    background: rgba(60, 40, 20, 0.35);
+  }
+
   .side-scrim.open {
     opacity: 1;
     pointer-events: auto;
+  }
+
+  [data-theme="light"] .side {
+    background: rgba(255, 251, 242, 0.98);
   }
 
   .toolbar {

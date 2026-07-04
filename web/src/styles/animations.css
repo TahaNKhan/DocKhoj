@@ -17,19 +17,19 @@
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(122, 184, 122, 0.55);
+    box-shadow: 0 0 0 0 var(--pulse-color, rgba(122, 184, 122, 0.55));
   }
   100% {
-    box-shadow: 0 0 0 10px rgba(122, 184, 122, 0);
+    box-shadow: 0 0 0 10px var(--pulse-color-end, rgba(122, 184, 122, 0));
   }
 }
 
 @keyframes pulse-warm {
   0% {
-    box-shadow: 0 0 0 0 rgba(226, 85, 64, 0.5);
+    box-shadow: 0 0 0 0 var(--pulse-warm-color, rgba(226, 85, 64, 0.5));
   }
   100% {
-    box-shadow: 0 0 0 10px rgba(226, 85, 64, 0);
+    box-shadow: 0 0 0 10px var(--pulse-warm-color-end, rgba(226, 85, 64, 0));
   }
 }
 
@@ -108,4 +108,31 @@
   background: #7ab87a;
   box-shadow: 0 0 0 0 rgba(122, 184, 122, 0.55);
   animation: pulse 1.8s ease-out infinite;
+}
+
+/* Light theme: the green indicator gets a darker green so it reads
+   on the cream background. */
+[data-theme="light"] .dot-live {
+  background: #4a7a3e;
+  --pulse-color: rgba(74, 122, 62, 0.55);
+  --pulse-color-end: rgba(74, 122, 62, 0);
+}
+
+/* Light theme: ambient background layers. */
+[data-theme="light"] .aurora {
+  background:
+    radial-gradient(50% 40% at 18% 0%, rgba(184, 57, 31, 0.10), transparent 60%),
+    radial-gradient(40% 30% at 92% 8%, rgba(210, 77, 51, 0.06), transparent 60%),
+    radial-gradient(60% 30% at 50% 100%, rgba(184, 57, 31, 0.05), transparent 60%);
+}
+
+[data-theme="light"] .grain {
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+}
+
+[data-theme="light"] .grid-overlay {
+  background-image:
+    linear-gradient(to right, rgba(80, 55, 30, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(80, 55, 30, 0.04) 1px, transparent 1px);
 }

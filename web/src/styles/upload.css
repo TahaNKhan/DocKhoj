@@ -422,6 +422,12 @@
   animation: pulse-warm 1.6s infinite;
 }
 
+[data-theme="light"] .qrow .status .pulse-dot {
+  --pulse-warm-color: rgba(184, 57, 31, 0.45);
+  --pulse-warm-color-end: rgba(184, 57, 31, 0);
+}
+}
+
 .qrow.done .status {
   color: #a8d4a0;
 }

@@ -34,6 +34,13 @@
   --accent-2: #f08a6e;
   --accent-soft: rgba(226, 85, 64, 0.14);
   --warm-glow: rgba(226, 85, 64, 0.22);
+  --danger: #e07440;
+
+  /* Surfaces */
+  --surface-3: #221d18;
+
+  /* Muted levels */
+  --muted-2: #6f6862;
 
   /* Geometry */
   --r: 8px;
@@ -48,9 +55,41 @@
   /* Spacing */
   --pad: 32px;
 
+  /* Shadows */
+  --shadow-sm: 0 4px 14px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.55);
+
   /* Motion (used by animations.css; declared here so motion tokens
      can be referenced independently of the keyframes) */
   --motion-aurora: 24s ease-in-out infinite alternate;
   --motion-rise: 0.45s cubic-bezier(0.2, 0.7, 0.2, 1);
   --motion-caret: 1s steps(2) infinite;
+}
+
+/* Light theme — toggled via data-theme="light" on <html>. */
+[data-theme="light"] {
+  --bg: #f6efe1;
+  --surface: #fffbf2;
+  --surface-2: #efe7d4;
+  --surface-3: #e6dcc6;
+  --cream: #1c130a;
+  --paper: #efe6d2;
+  --fg: #1c130a;
+  --fg-soft: #5a4a36;
+  --muted: #8a7a62;
+  --muted-2: #b1a48d;
+
+  --border: #dccfb4;
+  --border-soft: #e8dec5;
+
+  --accent: #b8391f;
+  --accent-2: #d24d33;
+  --accent-soft: rgba(184, 57, 31, 0.10);
+  --warm-glow: rgba(184, 57, 31, 0.16);
+  --danger: #a5321b;
+
+  --shadow-sm: 0 2px 8px rgba(60, 40, 20, 0.08);
+  --shadow-md: 0 8px 24px rgba(60, 40, 20, 0.10);
+  --shadow-lg: 0 24px 60px rgba(60, 40, 20, 0.14);
 }
