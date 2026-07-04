@@ -243,7 +243,24 @@ async function chatAs(
   });
 }
 
-describe('p4-T13 / FR-40 — cross-user retrieval', () => {
+// p4-T13 — env-dependent e2e. The test pins QDRANT_URL to the
+// docker-network IP of dockhoj-qdrant (see vi.hoisted above). On
+// a host where that IP isn't routable (workstation without the
+// port mapping, CI without the bridge), the entire suite skips.
+// Running `./restart.sh` first makes the IP routable, per
+// project CLAUDE.md §"End-to-end testing protocol".
+const qdrantReachable = await (async () => {
+  const url = process.env.QDRANT_URL ?? 'http://172.25.0.2:6333';
+  try {
+    const res = await fetch(`${url.replace(/\/$/, '')}/`);
+    return !!res;
+  } catch {
+    return false;
+  }
+})();
+const describeIf = qdrantReachable ? describe : describe.skip;
+
+describeIf('p4-T13 / FR-40 — cross-user retrieval', () => {
   let app: ReturnType<typeof Fastify>;
   let db: Database.Database;
   let tempDir: string;
