@@ -293,7 +293,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Unauthenticated visit to `/upload` redirects to `/login?next=/upload`.
 - **Dependencies.** T16.
 - **Estimate.** S.
-- **Status.** todo.
+- **Status.** done.
 
 ## T18. SPA: VisibilityToggle on upload + DocumentsList owner column
 
