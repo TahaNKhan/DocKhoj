@@ -5,6 +5,33 @@ const QDRANT_URL = process.env.QDRANT_URL || 'http://localhost:6333';
 const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'documents';
 const VECTOR_SIZE = parseInt(process.env.VECTOR_SIZE || '768', 10);
 
+// Phase 04 / p4-T03 — small key/value collection used to gate
+// one-shot migrations and other app-level bookkeeping. Each point
+// stores `{ key: <logical-name>, value: string }`; the point ID is
+// a UUID (Qdrant requires UUID or unsigned-integer IDs — strings
+// are rejected).
+const METADATA_COLLECTION = process.env.QDRANT_METADATA_COLLECTION || 'app_metadata';
+const METADATA_VECTOR_SIZE = 1;
+const MIGRATION_FLAG_KEY = 'phase_04_qdrant_migration_applied';
+const MIGRATION_SCAN_BATCH = 100;
+
+// Fixed UUID for the migration flag's metadata point. Stable across
+// boots so getMetadata finds the previously-written value. If we
+// ever add more flags, switch to a namespace UUID v5 — one literal
+// is enough today.
+const MIGRATION_FLAG_POINT_ID = '00000000-0000-4000-8000-000000000001';
+
+export type Visibility = 'public' | 'private';
+
+// ponytail: Qdrant 1.17's `setPayload` interprets `null` as "delete
+// the key" — verified empirically against a real qdrant container.
+// The design says `ownerId: string | null`, but at the storage layer
+// we can't keep a literal null. Use the empty string as the sentinel
+// for "no owner". The buildVisibilityFilter clause `match: { value:
+// viewerId }` won't match "" for any real viewerId, so semantics
+// are preserved.
+export const NO_OWNER_SENTINEL = '';
+
 export interface DocumentChunkPayload {
   chunk: string;
   fileName: string;
@@ -81,8 +108,72 @@ export async function initCollection(): Promise<void> {
   await ensurePayloadIndexes();
 }
 
+// Phase 04 / p4-T03 — ensure the small `app_metadata` collection
+// exists. Called by both initCollection (with the existing
+// collections list) and migratePayloads (standalone boot path).
+// Idempotent.
+export async function ensureMetadataCollection(): Promise<void> {
+  const collections = await client.getCollections();
+  const exists = collections.collections.some((c) => c.name === METADATA_COLLECTION);
+  if (exists) return;
+  await client.createCollection(METADATA_COLLECTION, {
+    vectors: { size: METADATA_VECTOR_SIZE, distance: 'Cosine' },
+  });
+  log.info({ collection: METADATA_COLLECTION }, 'Created metadata collection');
+}
+
+export async function getMetadata(key: string): Promise<string | null> {
+  try {
+    const rows = (await client.retrieve(METADATA_COLLECTION, {
+      ids: [metadataPointIdFor(key)] as unknown as Array<string | number>,
+      with_payload: true,
+      with_vector: false,
+    } as unknown as Parameters<typeof client.retrieve>[1])) as Array<{
+      id?: string | number;
+      payload?: Record<string, unknown> | null;
+    }>;
+    const row = rows[0];
+    if (!row || !row.payload) return null;
+    const value = row.payload.value;
+    return typeof value === 'string' ? value : null;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    log.warn({ err: message, key }, 'getMetadata failed');
+    return null;
+  }
+}
+
+export async function setMetadata(key: string, value: string): Promise<void> {
+  await client.upsert(METADATA_COLLECTION, {
+    wait: true,
+    points: [
+      {
+        id: metadataPointIdFor(key),
+        vector: new Array(METADATA_VECTOR_SIZE).fill(0),
+        payload: { key, value },
+      },
+    ],
+  } as unknown as Parameters<typeof client.upsert>[1]);
+}
+
+// ponytail: one-flag-one-literal — only the migration flag exists
+// today. When the second flag lands, replace with uuidv5 against a
+// stable namespace.
+function metadataPointIdFor(key: string): string {
+  if (key === MIGRATION_FLAG_KEY) return MIGRATION_FLAG_POINT_ID;
+  throw new Error(`Unknown metadata key: ${key}`);
+}
+
 async function ensurePayloadIndexes(): Promise<void> {
-  const keywordFields = ['fileName', 'filePath', 'fileType'];
+  const keywordFields = [
+    'fileName',
+    'filePath',
+    'fileType',
+    // Phase 04 / p4-T03 / FR-33 — owner + visibility indexes for
+    // the buildVisibilityFilter clause. Both keyword schema.
+    'ownerId',
+    'visibility',
+  ];
   for (const field of keywordFields) {
     try {
       await client.createPayloadIndex(COLLECTION_NAME, {
@@ -115,6 +206,99 @@ async function ensurePayloadIndexes(): Promise<void> {
       log.warn({ err: message, field: 'pageNumber' }, 'Failed to create payload index');
     }
   }
+}
+
+// Phase 04 / p4-T03 / FR-29 — stamp ownerId + visibility on every
+// chunk of a given file. `fileId` is the chunk payload's `filePath`
+// value (the on-disk basename = `${fileId}${ext}`); filtering by
+// that field uniquely identifies the chunks of one file. Uses
+// Qdrant's set_payload with a filter so we don't need to scroll
+// + enumerate point IDs first. `ownerId: null` is mapped to
+// NO_OWNER_SENTINEL — see that constant for why.
+export async function setOwnerVisibility(
+  fileId: string,
+  ownerId: string | null,
+  visibility: Visibility
+): Promise<void> {
+  await client.setPayload(COLLECTION_NAME, {
+    wait: true,
+    payload: {
+      ownerId: ownerId ?? NO_OWNER_SENTINEL,
+      visibility,
+    },
+    filter: {
+      must: [{ key: 'filePath', match: { value: fileId } }],
+    },
+  } as unknown as Parameters<typeof client.setPayload>[1]);
+}
+
+// Phase 04 / p4-T03 / FR-31 — one-shot migration that stamps
+// `ownerId = NO_OWNER_SENTINEL, visibility = 'public'` on every
+// chunk that doesn't already have both fields. (Qdrant 1.17
+// treats null as a delete — see NO_OWNER_SENTINEL.) Idempotent;
+// gated by an app_metadata flag so subsequent boots are no-ops.
+export async function migratePayloads(): Promise<{
+  scanned: number;
+  updated: number;
+  alreadyMigrated: boolean;
+}> {
+  await ensureMetadataCollection();
+  const flag = await getMetadata(MIGRATION_FLAG_KEY);
+  if (flag !== null) {
+    log.info({ migratedAt: flag }, 'Qdrant payload migration already applied');
+    return { scanned: 0, updated: 0, alreadyMigrated: true };
+  }
+
+  log.info('Running Qdrant payload migration');
+  let scanned = 0;
+  let updated = 0;
+  let offset: string | number | Record<string, unknown> | undefined = undefined;
+
+  // ponytail: scan-then-batch — read one page, write that page's
+  // updates, advance. Memory bounded by MIGRATION_SCAN_BATCH. If
+  // collections grow past ~1M points, swap to a parallel scroll +
+  // async writes; today the self-hosted profile is small enough
+  // that the simple loop is fine.
+  while (true) {
+    const result = (await client.scroll(COLLECTION_NAME, {
+      limit: MIGRATION_SCAN_BATCH,
+      offset,
+      with_payload: true,
+      with_vector: false,
+    } as unknown as Parameters<typeof client.scroll>[1])) as {
+      points?: Array<{ id: string | number; payload?: Record<string, unknown> | null }>;
+      next_page_offset?: string | number | Record<string, unknown> | null;
+    };
+
+    const points = result.points ?? [];
+    if (points.length === 0) break;
+
+    const toUpdate: Array<string | number> = [];
+    for (const point of points) {
+      scanned++;
+      const payload = point.payload ?? {};
+      if (!('ownerId' in payload) || !('visibility' in payload)) {
+        toUpdate.push(point.id);
+      }
+    }
+
+    if (toUpdate.length > 0) {
+      await client.setPayload(COLLECTION_NAME, {
+        wait: true,
+        payload: { ownerId: NO_OWNER_SENTINEL, visibility: 'public' },
+        points: toUpdate as unknown as Array<string | number>,
+      } as unknown as Parameters<typeof client.setPayload>[1]);
+      updated += toUpdate.length;
+    }
+
+    const next = result.next_page_offset;
+    if (next === undefined || next === null) break;
+    offset = next as unknown as typeof offset;
+  }
+
+  await setMetadata(MIGRATION_FLAG_KEY, new Date().toISOString());
+  log.info({ scanned, updated }, 'Qdrant payload migration complete');
+  return { scanned, updated, alreadyMigrated: false };
 }
 
 export async function upsertChunk(chunk: DocumentChunk): Promise<void> {

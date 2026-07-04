@@ -12,7 +12,7 @@ import { sessionRoutes } from './routes/api-sessions.js';
 import { healthRoutes } from './routes/api-health.js';
 import { statusRoutes } from './routes/api-status.js';
 import { documentRoutes } from './routes/api-documents.js';
-import { initCollection } from './services/qdrant.js';
+import { initCollection, migratePayloads } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
 import { openDb } from './db/index.js';
 import { migrate } from './db/migrate.js';
@@ -133,6 +133,13 @@ async function start() {
     log.info({ applied: result.applied, total: result.total }, 'Migrations done');
 
     await initCollection();
+
+    // Phase 04 / p4-T03 / FR-31 — one-shot Qdrant payload backfill
+    // (ownerId + visibility on legacy chunks). Gated by an
+    // app_metadata flag; idempotent on re-run. Runs after
+    // initCollection so the indexes + metadata collection exist.
+    const migration = await migratePayloads();
+    log.info(migration, 'Qdrant payload migration result');
 
     const ollamaReady = await isOllamaAvailable();
     log.info({ ollamaReady }, 'Ollama reachability');
