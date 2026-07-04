@@ -111,44 +111,48 @@ function Chrome() {
     };
   }, []);
 
-  // On mount: load the session list, then restore the active
-  // session from localStorage (or pick the most-recent, creating a
-  // new one if none exist).
+  // Load the session list on mount so the sidebar has data on every
+  // route that renders it (chat, upload). On the chat route we also
+  // restore the active session from localStorage (or create one) and
+  // load its messages.
   useEffect(() => {
-    if (!isChatRoute) return;
+    const needsSessions = isChatRoute || isUploadRoute;
+    if (!needsSessions) return;
     let cancelled = false;
     (async () => {
       try {
-        let list = await listSessions();
+        const list = await listSessions();
         if (cancelled) return;
-
-        const stored = loadActiveSessionId();
-        let target: Conversation | undefined;
-        if (stored && list.find((s) => s.id === stored)) {
-          target = list.find((s) => s.id === stored);
-        } else if (list.length > 0) {
-          target = list[0];
-        } else {
-          const created = await createSession();
-          list = [created, ...list];
-          target = created;
-        }
-        if (!target) return;
-        if (cancelled) return;
-        saveActiveSessionId(target.id);
         setSessions(list);
-        setActiveId(target.id);
-        const msgs = await listMessages(target.id);
-        if (!cancelled) setMessages(msgs);
+
+        if (isChatRoute) {
+          const stored = loadActiveSessionId();
+          let target: Conversation | undefined;
+          if (stored && list.find((s) => s.id === stored)) {
+            target = list.find((s) => s.id === stored);
+          } else if (list.length > 0) {
+            target = list[0];
+          } else {
+            const created = await createSession();
+            list.push(created);
+            target = created;
+          }
+          if (!target) return;
+          if (cancelled) return;
+          saveActiveSessionId(target.id);
+          setActiveId(target.id);
+          const msgs = await listMessages(target.id);
+          if (!cancelled) setMessages(msgs);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => {
       cancelled = true;
-      streamRef.current?.close();
+      if (!isChatRoute) streamRef.current?.close();
     };
-  }, [isChatRoute]);
+  }, [isChatRoute, isUploadRoute]);
 
   async function selectSession(id: string) {
     if (id === activeId && isChatRoute) return;
