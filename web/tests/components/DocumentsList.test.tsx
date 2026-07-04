@@ -19,6 +19,12 @@ function makeDoc(overrides: Partial<Document> = {}): Document {
     bytes: 2048,
     uploadedAt: '2026-07-01 10:00:00',
     chunkCount: 12,
+    // p4-T18: defaults reflect a typical own-private row so existing
+    // tests don't have to set the new fields. Per-task assertions
+    // override these to verify chip + owner rendering.
+    ownerId: 'user-1',
+    ownerUsername: 'alice',
+    visibility: 'private',
     ...overrides,
   };
 }
@@ -133,5 +139,54 @@ describe('DocumentsList', () => {
     );
     const delBtn = container.querySelector('.docrow button.del') as HTMLButtonElement;
     expect(delBtn.disabled).toBe(true);
+  });
+
+  // p4-T18 — owner + visibility chip rendering.
+  it('renders the owner username when ownerUsername is set', () => {
+    const { container } = render(
+      <DocumentsList
+        documents={[makeDoc({ ownerUsername: 'alice' })]}
+        onDelete={async () => {}}
+      />
+    );
+    expect(container.querySelector('.docrow .owner')!.textContent).toBe('alice');
+    // "Shared" must NOT appear for an owned row.
+    expect(container.querySelector('.docrow')!.textContent).not.toContain('Shared');
+  });
+
+  it('renders "Shared" when ownerUsername is null (legacy owner_id IS NULL)', () => {
+    const { container } = render(
+      <DocumentsList
+        documents={[makeDoc({ ownerId: null, ownerUsername: null })]}
+        onDelete={async () => {}}
+      />
+    );
+    expect(container.querySelector('.docrow .owner')!.textContent).toBe('Shared');
+  });
+
+  it('shows the Private chip for visibility=private', () => {
+    const { container } = render(
+      <DocumentsList
+        documents={[makeDoc({ visibility: 'private' })]}
+        onDelete={async () => {}}
+      />
+    );
+    const chip = container.querySelector('.docrow .vis-chip');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toBe('Private');
+    expect(chip!.classList.contains('vis-private')).toBe(true);
+  });
+
+  it('shows the Public chip for visibility=public', () => {
+    const { container } = render(
+      <DocumentsList
+        documents={[makeDoc({ visibility: 'public' })]}
+        onDelete={async () => {}}
+      />
+    );
+    const chip = container.querySelector('.docrow .vis-chip');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toBe('Public');
+    expect(chip!.classList.contains('vis-public')).toBe(true);
   });
 });

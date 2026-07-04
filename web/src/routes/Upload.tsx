@@ -7,6 +7,7 @@ import {
   type QueueRowData,
 } from '../components/QueueRow';
 import { DocumentsList } from '../components/DocumentsList';
+import { VisibilityToggle, type Visibility } from '../components/VisibilityToggle';
 import { uploadFile } from '../services/upload';
 import { fetchStatus } from '../services/status';
 import {
@@ -34,6 +35,10 @@ interface InFlightUpload {
 export function Upload() {
   const [rows, setRows] = useState<QueueRowData[]>([]);
   const [chunksIndexed, setChunksIndexed] = useState<number | null>(null);
+  // p4-T18: visibility selection. Lives at the page level so the
+  // toggle can sit next to the dropzone and the queue inherits the
+  // user's choice without per-row state.
+  const [visibility, setVisibility] = useState<Visibility>('private');
 
   // Phase 03 / p3-T03: Documents list state. Loaded once on
   // mount, refreshed after each upload completes, refreshed after
@@ -141,7 +146,8 @@ export function Upload() {
             const pct = Math.floor((loaded / total) * 100);
             updateRow(row.id, { progress: pct });
           },
-          ac.signal
+          ac.signal,
+          visibility
         );
         inflightRef.current.set(row.id, handle);
 
@@ -223,6 +229,16 @@ export function Upload() {
             <b>{chunksIndexed === null ? '—' : chunksIndexed.toLocaleString()}</b>
             chunks indexed
           </div>
+        </div>
+
+        <div class="vis-bar">
+          <div class="vis-bar-label">
+            <span class="vis-bar-eyebrow">Visibility</span>
+            <span class="vis-bar-hint">
+              New uploads will be <b>{visibility}</b>.
+            </span>
+          </div>
+          <VisibilityToggle value={visibility} onChange={setVisibility} />
         </div>
 
         <Dropzone onFiles={enqueue} />

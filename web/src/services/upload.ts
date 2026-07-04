@@ -50,7 +50,8 @@ interface XhrLike {
 export function uploadFile(
   file: File,
   onProgress?: UploadProgress,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  visibility?: 'public' | 'private'
 ): UploadHandle {
   const xhr = new XMLHttpRequest() as unknown as XhrLike;
   xhr.open('POST', '/api/upload');
@@ -125,6 +126,11 @@ export function uploadFile(
 
     const form = new FormData();
     form.append('file', file);
+    // p4-T18: thread visibility to the server. Server defaults to
+    // 'private' when omitted, but we send it explicitly so the user
+    // sees their selection take effect immediately on the next list
+    // refresh (no extra round trip).
+    if (visibility) form.append('visibility', visibility);
     xhr.send(form);
   });
 

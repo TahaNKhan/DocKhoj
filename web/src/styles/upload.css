@@ -619,3 +619,151 @@
   opacity: 0.5;
   cursor: wait;
 }
+
+/* p4-T18 — visibility toggle bar (sits between page-head and dropzone)
+ * + chip + owner column on each row. */
+.vis-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 14px 20px;
+  margin-bottom: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  flex-wrap: wrap;
+}
+
+.vis-bar-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.vis-bar-eyebrow {
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.vis-bar-hint {
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+
+.vis-bar-hint b {
+  color: var(--cream);
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.vis-toggle {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.vis-toggle .vis-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: rgba(244, 236, 225, 0.02);
+  cursor: pointer;
+  transition: 0.2s;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.vis-toggle .vis-opt:hover {
+  border-color: #3a322c;
+  color: var(--fg-soft);
+}
+
+.vis-toggle .vis-opt input {
+  /* Visually hide the native radio but keep it focusable + a11y
+   * available. Using appearance:none + a tiny dot when "on". */
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  margin: 0;
+  cursor: pointer;
+  transition: 0.2s;
+  position: relative;
+}
+
+.vis-toggle .vis-opt.on {
+  border-color: var(--accent);
+  background: rgba(226, 85, 64, 0.08);
+  color: var(--cream);
+}
+
+.vis-toggle .vis-opt.on input {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px var(--surface);
+}
+
+.vis-toggle .vis-opt input:focus-visible {
+  outline: 2px solid var(--accent-2);
+  outline-offset: 2px;
+}
+
+.vis-toggle .vis-opt .vis-sub {
+  font-family: var(--f-body);
+  font-size: 10.5px;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.vis-toggle .vis-opt.on .vis-sub {
+  color: var(--fg-soft);
+}
+
+/* Visibility chip on each document row. */
+.docrow .vis-chip {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--f-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+.docrow .vis-chip.vis-public {
+  border: 1px solid rgba(122, 184, 122, 0.4);
+  color: #a8d4a0;
+  background: rgba(122, 184, 122, 0.08);
+}
+
+.docrow .vis-chip.vis-private {
+  border: 1px solid var(--border);
+  color: var(--muted);
+  background: rgba(244, 236, 225, 0.03);
+}
+
+.docrow .owner {
+  color: var(--fg-soft);
+}
+
+.docrow .name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+  max-width: 100%;
+}

@@ -4,6 +4,8 @@
 // with the server's response; the integration smoke test catches
 // drift.
 
+export type Visibility = 'public' | 'private';
+
 export interface Document {
   fileId: string;
   fileName: string;
@@ -11,6 +13,11 @@ export interface Document {
   bytes: number;
   uploadedAt: string;
   chunkCount: number;
+  // p4-T10/T18: per-user ownership. `ownerUsername === null` means the
+  // file is shared (legacy uploads: owner_id IS NULL on the row).
+  ownerId: string | null;
+  ownerUsername: string | null;
+  visibility: Visibility;
 }
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
