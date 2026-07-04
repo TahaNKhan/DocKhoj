@@ -46,7 +46,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - A test uploads a file pre-migration, runs the migration, asserts the chunk payload now has both fields.
 - **Dependencies.** T2.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T4. UserStore + AuthSessionStore + InviteStore + password.ts
 
