@@ -253,25 +253,24 @@ export class ConversationStore {
   // ----- Title management (FR-14, FR-15b) -----
 
   /**
-   * Set a title produced by the LLM title generator. Refuses to
-   * overwrite a user-renamed title (title_source = 'user') or an
-   * already-generated title (preserves the most recent winning LLM
-   * title if the generator was invoked again for some reason).
+   * Set a title produced by the LLM title generator. Only refuses to
+   * overwrite a user-renamed title (title_source = 'user'). Allows
+   * regenerating over an existing generated or fallback title so the
+   * conversation title stays current as the topic evolves.
    *
    * Returns true if the title was persisted, false if it was rejected
-   * (because the session's current title is 'user'-sourced or 'generated').
+   * (because the session's current title is 'user'-sourced).
    */
   setGeneratedTitle(conversationId: string, title: string): boolean {
     const current = this.get(conversationId);
     if (!current) return false;
     if (current.titleSource === 'user') return false;
-    if (current.titleSource === 'generated') return false;
-    // current titleSource is 'default' or 'fallback' — safe to overwrite
+    // current titleSource is 'default', 'fallback' or 'generated' — safe to overwrite
     this.db
       .prepare(
         `UPDATE conversations
          SET title = ?, title_source = 'generated', updated_at = datetime('now')
-         WHERE id = ? AND title_source IN ('default', 'fallback')`
+         WHERE id = ? AND title_source IN ('default', 'fallback', 'generated')`
       )
       .run(title.trim(), conversationId);
     return true;

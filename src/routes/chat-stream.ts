@@ -5,6 +5,7 @@ import { streamChatCompletion, type StreamEvent } from '../services/stream-chat.
 import { streamAgentChat } from '../services/agent-loop.js';
 import {
   generateConversationTitle,
+  regenerateConversationTitle,
   fallbackTitle,
 } from '../services/title-generator.js';
 import { chatLog as log } from '../utils/logger.js';
@@ -121,7 +122,6 @@ export async function chatStreamRoutes(fastify: FastifyInstance) {
     reply.raw.on('close', () => ac.abort());
 
     const userMessageId = uuidv4();
-    const isFirstExchange = store.listMessages(validSid).length === 0;
 
     let fullText = '';
     let eventSources: Array<{
@@ -388,42 +388,53 @@ export async function chatStreamRoutes(fastify: FastifyInstance) {
         if (agenticDone) break;
       }
 
-      if (!ac.signal.aborted && isFirstExchange) {
-        // Fire-and-forget title generator. The stream can already be
-        // closed by the time this lands — writeEvent then becomes a
-        // silent no-op on a closed socket.
+      if (!ac.signal.aborted) {
+        // Fire-and-forget title generator / regenerator. The stream
+        // can already be closed by the time this lands — writeEvent
+        // then becomes a silent no-op on a closed socket.
         void (async () => {
           try {
-            const llmTitle = await generateConversationTitle(q, fullText);
-            if (isUsableTitle(llmTitle)) {
-              const title = llmTitle.trim();
-              const persisted = store.setGeneratedTitle(validSid, title);
-              log.info({ title, persisted, sessionId: validSid }, 'LLM title persisted');
-              if (persisted) {
-                writeEvent(reply.raw, 'title', { sessionId: validSid, title });
+            const messageCount = store.listMessages(validSid).length;
+            if (messageCount <= 2) {
+              // First exchange — generate title from the first user
+              // query and assistant response (the existing path).
+              const llmTitle = await generateConversationTitle(q, fullText);
+              if (isUsableTitle(llmTitle)) {
+                const title = llmTitle.trim();
+                const persisted = store.setGeneratedTitle(validSid, title);
+                log.info({ title, persisted, sessionId: validSid }, 'LLM title persisted');
+                if (persisted) {
+                  writeEvent(reply.raw, 'title', { sessionId: validSid, title });
+                }
+              } else {
+                const title = fallbackTitle(q);
+                const persisted = store.setFallbackTitle(validSid, title);
+                log.warn(
+                  { llmTitle, sessionId: validSid },
+                  'LLM title unusable; falling back to user-prefix'
+                );
+                if (persisted) {
+                  writeEvent(reply.raw, 'title', { sessionId: validSid, title });
+                }
               }
             } else {
-              // LLM output was empty / chain-of-thought / too long.
-              // Fall back to the 60-char user-prefix and mark
-              // title_source = 'fallback' so a future LLM title can
-              // still win (per FR-15b).
-              const title = fallbackTitle(q);
-              const persisted = store.setFallbackTitle(validSid, title);
-              log.warn(
-                { llmTitle, sessionId: validSid },
-                'LLM title unusable; falling back to user-prefix'
-              );
-              if (persisted) {
-                writeEvent(reply.raw, 'title', { sessionId: validSid, title });
+              // Subsequent exchange — regenerate title from full
+              // conversation context if the topic has evolved.
+              const conv = store.get(validSid);
+              if (conv && conv.titleSource !== 'user') {
+                const messages = store.listMessages(validSid);
+                const newTitle = await regenerateConversationTitle(messages, conv.title);
+                if (newTitle) {
+                  const persisted = store.setGeneratedTitle(validSid, newTitle);
+                  log.info({ newTitle, persisted, sessionId: validSid }, 'Title regenerated');
+                  if (persisted) {
+                    writeEvent(reply.raw, 'title', { sessionId: validSid, title: newTitle });
+                  }
+                }
               }
             }
           } catch (err) {
-            log.warn({ err, sessionId: validSid }, 'Title LLM call failed, falling back');
-            const title = fallbackTitle(q);
-            const persisted = store.setFallbackTitle(validSid, title);
-            if (persisted) {
-              writeEvent(reply.raw, 'title', { sessionId: validSid, title });
-            }
+            log.warn({ err, sessionId: validSid }, 'Title generation failed');
           } finally {
             reply.raw.end();
           }

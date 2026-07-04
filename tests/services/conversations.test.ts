@@ -271,13 +271,14 @@ describe('ConversationStore', () => {
       expect(store.get(s.id)!.title).toBe('User Picked This');
     });
 
-    it('setGeneratedTitle rejects overwrite of an existing generated title', () => {
-      // guards against duplicate concurrent title generators writing twice
+    it('setGeneratedTitle overwrites an existing generated title (regeneration)', () => {
+      // The guard was relaxed so title regeneration can update an
+      // outgrown title as the conversation evolves.
       const s = store.create(aliceId);
       store.setGeneratedTitle(s.id, 'First LLM Title');
       const ok = store.setGeneratedTitle(s.id, 'Second LLM Title');
-      expect(ok).toBe(false);
-      expect(store.get(s.id)!.title).toBe('First LLM Title');
+      expect(ok).toBe(true);
+      expect(store.get(s.id)!.title).toBe('Second LLM Title');
     });
 
     it('setFallbackTitle overwrites default only', () => {

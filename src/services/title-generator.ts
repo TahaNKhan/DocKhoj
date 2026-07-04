@@ -163,6 +163,76 @@ function looksLikePromptFragment(s: string): boolean {
 }
 
 /**
+ * Regenerate the conversation title after a subsequent exchange.
+ * Takes the full conversation history and current title, asks the LLM
+ * whether the topic has evolved meaningfully. Returns the new title,
+ * or `null` if the current title is still accurate.
+ *
+ * Only the last 10 messages are included to bound token cost.
+ */
+export async function regenerateConversationTitle(
+  messages: Array<{ role: string; content: string }>,
+  currentTitle: string,
+  signal?: AbortSignal
+): Promise<string | null> {
+  const recent = messages.slice(-10);
+  const conversationText = recent
+    .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content.slice(0, 500)}`)
+    .join('\n\n');
+
+  const prompt =
+    `You are a conversation title curator. Given the conversation below and its current title, ` +
+    `decide if the topic has evolved meaningfully enough to warrant a new title.\n\n` +
+    `Current title: "${currentTitle}"\n\n` +
+    `Conversation:\n${conversationText}\n\n` +
+    `If the current title no longer fits the conversation, suggest a new brief title (5-8 words, ≤80 chars). ` +
+    `If the current title is still accurate, return exactly: NO_CHANGE\n\n` +
+    `New title:`;
+
+  const messages_: TitleMessage[] = [
+    { role: 'system', content: TITLE_SYSTEM_PROMPT },
+    { role: 'user', content: prompt },
+  ];
+
+  let raw: string;
+  try {
+    const response = await openai.chat.completions.create(
+      {
+        model: LLM_MODEL,
+        messages: messages_,
+        max_tokens: 30,
+        temperature: 0.3,
+        stream: false,
+        thinking: { type: 'disabled' },
+      } as ChatCompletionCreateParamsNonStreaming,
+      signal ? { signal } : undefined
+    );
+    raw = response.choices?.[0]?.message?.content?.trim() ?? '';
+  } catch {
+    return null;
+  }
+
+  // Strip think blocks.
+  const noThink = raw.replace(/<\/?think>[\s\S]*?<\/think>/g, '').trim();
+  const candidate = noThink || extractFromThinkBlock(raw);
+
+  if (/no.?change/i.test(candidate)) return null;
+
+  const cleaned = candidate
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/[.!?]+$/, '')
+    .replace(/^(title|here is the title|the title is|here'?s a title|new title)\s*[:\-]?\s*/i, '')
+    .slice(0, 80)
+    .trim();
+
+  if (!cleaned) return null;
+  if (looksLikePromptFragment(cleaned)) return null;
+  if (cleaned.toLowerCase() === currentTitle.toLowerCase()) return null;
+
+  return cleaned;
+}
+
+/**
  * Fallback title used when the LLM call fails or returns empty.
  * First 60 chars of the user's first message, ellipsised.
  */

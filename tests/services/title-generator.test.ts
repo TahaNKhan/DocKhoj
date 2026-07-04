@@ -20,6 +20,7 @@ vi.mock('openai', () => ({
 
 import {
   generateConversationTitle,
+  regenerateConversationTitle,
   fallbackTitle,
 } from '../../src/services/title-generator.js';
 
@@ -130,6 +131,75 @@ describe('generateConversationTitle', () => {
       const out = await generateConversationTitle('x', 'y');
       expect(out, `should have discarded "${leaked}"`).toBe('');
     }
+  });
+});
+
+describe('regenerateConversationTitle', () => {
+  beforeEach(() => mockCreate.mockReset());
+
+  const msgs = [
+    { role: 'user', content: 'What did I read about habit loops?' },
+    { role: 'assistant', content: 'You wrote that the cue is invisible until you name it.' },
+    { role: 'user', content: 'How do I track my daily habits?' },
+    { role: 'assistant', content: 'Try a simple journal or a habit tracker app.' },
+  ];
+
+  it('returns null when the LLM says NO_CHANGE', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'NO_CHANGE' } }],
+    });
+    const out = await regenerateConversationTitle(msgs, 'Habit loop notes');
+    expect(out).toBeNull();
+  });
+
+  it('returns null when the LLM says no change with a sentence', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'No change needed — the current title still fits.' } }],
+    });
+    const out = await regenerateConversationTitle(msgs, 'Habit loop notes');
+    expect(out).toBeNull();
+  });
+
+  it('returns a new title when the conversation topic shifts', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'Daily habit tracking tips' } }],
+    });
+    const out = await regenerateConversationTitle(msgs, 'Habit loop notes');
+    expect(out).toBe('Daily habit tracking tips');
+  });
+
+  it('returns null when the new title equals current title', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'Habit loop notes' } }],
+    });
+    const out = await regenerateConversationTitle(msgs, 'Habit Loop Notes');
+    expect(out).toBeNull();
+  });
+
+  it('returns null when the LLM call fails', async () => {
+    mockCreate.mockRejectedValueOnce(new Error('API error'));
+    const out = await regenerateConversationTitle(msgs, 'Habit loop notes');
+    expect(out).toBeNull();
+  });
+
+  it('strips a leading "New title:" prefix', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'New title: Habit tracking with apps' } }],
+    });
+    const out = await regenerateConversationTitle(msgs, 'Habit loop notes');
+    expect(out).toBe('Habit tracking with apps');
+  });
+
+  it('passes through the abort signal', async () => {
+    mockCreate.mockResolvedValueOnce({
+      choices: [{ message: { content: 'NO_CHANGE' } }],
+    });
+    const ac = new AbortController();
+    await regenerateConversationTitle(msgs, 'Current', ac.signal);
+    expect(mockCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ max_tokens: 30, temperature: 0.3 }),
+      expect.objectContaining({ signal: ac.signal })
+    );
   });
 });
 
