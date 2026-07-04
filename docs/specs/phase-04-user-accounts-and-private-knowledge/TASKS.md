@@ -161,7 +161,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - Sending `visibility=foo` returns 400.
 - **Dependencies.** T8.
 - **Estimate.** M.
-- **Status.** todo.
+- **Status.** done.
 
 ## T10. Documents endpoints + download scoped
 
