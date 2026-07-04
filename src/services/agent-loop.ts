@@ -148,8 +148,14 @@ export interface AgentLoopDeps {
     signal: AbortSignal
   ) => AsyncGenerator<{ text: string; toolCalls: ToolCallDelta[] }>;
   executeAgentTool: (
+    // Phase 04 / p4-T12 / FR-39 — viewerId is threaded into every
+    // tool's Qdrant fetch and into the documents-row lookup in
+    // get_document. The AgentLoopDeps type widens name to `string`
+    // for the DI surface; the underlying function narrows it back
+    // via isAgentToolName.
     name: string,
     args: Record<string, unknown>,
+    viewerId: string,
     db: DB
   ) => Promise<AgentToolResult>;
 }
@@ -348,7 +354,15 @@ export async function* streamAgentChat(
         };
       } else {
         try {
-          result = await deps.executeAgentTool(toolName, parsedArgs, params.db);
+          // Phase 04 / p4-T12 / FR-39 — viewerId is threaded into
+          // every tool so Qdrant queries honor the visibility filter
+          // and get_document refuses foreign private files.
+          result = await deps.executeAgentTool(
+            toolName,
+            parsedArgs,
+            params.viewerId ?? '',
+            params.db
+          );
         } catch (err) {
           log.error({ err, toolName, sessionId: params.sessionId }, 'executeAgentTool threw');
           result = {

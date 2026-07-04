@@ -1,6 +1,7 @@
 import type { ChatCompletionTool } from 'openai/resources/chat/completions.js';
 import type Database from 'better-sqlite3';
 import {
+  buildVisibilityFilter,
   fetchByFilePathAndIndex,
   fetchByFilePathAndHeadingPath,
   qdrantClient,
@@ -99,7 +100,8 @@ function toToolChunk(c: DocumentChunk): ToolChunk {
 async function neighborChunks(
   filePath: string,
   chunkIndex: number,
-  range: number
+  range: number,
+  viewerId: string
 ): Promise<AgentToolResult> {
   const clampedRange = Math.max(1, Math.min(range, NEIGHBOR_RANGE_MAX));
   const collected: ToolChunk[] = [];
@@ -109,7 +111,7 @@ async function neighborChunks(
     if (delta === 0) continue;
     const target = chunkIndex + delta;
     if (target < 0) continue;
-    const neighbors = await fetchByFilePathAndIndex(filePath, target);
+    const neighbors = await fetchByFilePathAndIndex(filePath, target, viewerId);
     for (const n of neighbors) {
       if (seen.has(n.id)) continue;
       seen.add(n.id);
@@ -122,19 +124,22 @@ async function neighborChunks(
 
 async function sectionChunks(
   filePath: string,
-  headingPath: string[]
+  headingPath: string[],
+  viewerId: string
 ): Promise<AgentToolResult> {
-  const chunks = await fetchByFilePathAndHeadingPath(filePath, headingPath);
+  const chunks = await fetchByFilePathAndHeadingPath(filePath, headingPath, viewerId);
   return { kind: 'chunks', chunks: chunks.map(toToolChunk), truncated: false };
 }
 
-async function getChunkById(chunkId: string): Promise<AgentToolResult> {
+async function getChunkById(chunkId: string, viewerId: string): Promise<AgentToolResult> {
   try {
+    const visClause = buildVisibilityFilter(viewerId);
     const points = (await qdrantClient.retrieve(QDRANT_COLLECTION, {
       ids: [chunkId],
       with_payload: true,
       with_vector: false,
-    })) as Array<{
+      filter: visClause as unknown as Record<string, unknown>,
+    } as unknown as Parameters<typeof qdrantClient.retrieve>[1])) as Array<{
       id: string | number;
       payload?: Record<string, unknown> | null;
     }>;
@@ -162,6 +167,17 @@ async function getChunkById(chunkId: string): Promise<AgentToolResult> {
   }
 }
 
+// Phase 04 / p4-T12 / FR-39 — a document row is "visible" to the
+// viewer when either it's shared (owner_id IS NULL) or the viewer's
+// id matches owner_id. Foreign private files surface as a NOT_FOUND
+// (the same shape the LLM already handles), keeping the "I can't see
+// this file" invisible. Reuses the DocumentStore row getters so
+// foreign-private files are never returned by lookup.
+function isDocumentVisibleTo(row: DocumentRow, viewerId: string): boolean {
+  if (!row.ownerId) return true;
+  return row.ownerId === viewerId;
+}
+
 async function getDocument(
   // p3-T12: accept EITHER the on-disk `filePath` (= `${fileId}${ext}`)
   // or the user-facing `fileName`. The LLM frequently passes the
@@ -170,6 +186,7 @@ async function getDocument(
   // common case "the LLM saw 'CC&Rs.pdf' and called us with that"
   // actually returns the document instead of NOT_FOUND.
   filePath: string,
+  viewerId: string,
   db: DB
 ): Promise<AgentToolResult> {
   if (!filePath) return notFound('Document not found');
@@ -179,27 +196,48 @@ async function getDocument(
   const fileId = filePath.replace(/\.[^.]+$/, '');
   if (fileId) {
     const byId = store.get(fileId);
-    if (byId) return { kind: 'document', document: byId };
+    if (byId) {
+      // p4-T12: refuse foreign-private files before returning them.
+      if (!isDocumentVisibleTo(byId, viewerId)) {
+        return notFound('Document not found');
+      }
+      return { kind: 'document', document: byId };
+    }
   }
 
   // 2. Fallback: fileName lookup (treats the same string as a
   // user-facing fileName). If multiple uploads share a name, the
   // most-recent wins.
   const byName = store.getByFileName(filePath);
-  if (byName) return { kind: 'document', document: byName };
+  if (byName) {
+    if (!isDocumentVisibleTo(byName, viewerId)) {
+      return notFound('Document not found');
+    }
+    return { kind: 'document', document: byName };
+  }
 
   return notFound('Document not found');
 }
 
 /**
- * Dispatch an agent tool call. Pure function over (name, args, db) —
- * the agent loop and unit tests both call this directly. The db
- * parameter is required for `get_document`; pass the Fastify
- * singleton db to the loop and a `:memory:` db from tests.
+ * Dispatch an agent tool call. Pure function over
+ * (name, args, viewerId, db) — the agent loop and unit tests both
+ * call this directly. `viewerId` is threaded into every Qdrant
+ * fetch (so chunks from a foreign private file return empty) and
+ * into the documents-row lookup in `get_document` (so foreign
+ * private fileIds return NOT_FOUND). The db parameter is required
+ * for `get_document`; pass the Fastify singleton db to the loop
+ * and a `:memory:` db from tests.
+ *
+ * `viewerId` is required — callers that don't yet know the
+ * requester (Phase 03 code paths) can pass the empty string, which
+ * mirrors Phase 03's "no visibility filter" behavior (shared rows
+ * match via the NO_OWNER_SENTINEL branch).
  */
 export async function executeAgentTool(
   name: AgentToolName,
   args: Record<string, unknown>,
+  viewerId: string,
   db: DB
 ): Promise<AgentToolResult> {
   switch (name) {
@@ -216,7 +254,7 @@ export async function executeAgentTool(
       if (typeof range !== 'number' || !Number.isFinite(range) || range < 1) {
         return invalidArg('range must be a positive integer');
       }
-      return neighborChunks(filePath, chunkIndex, range);
+      return neighborChunks(filePath, chunkIndex, range, viewerId);
     }
 
     case 'get_section_chunks': {
@@ -228,7 +266,7 @@ export async function executeAgentTool(
       if (!Array.isArray(headingPath) || !headingPath.every((h) => typeof h === 'string')) {
         return invalidArg('headingPath (string[]) is required');
       }
-      return sectionChunks(filePath, headingPath as string[]);
+      return sectionChunks(filePath, headingPath as string[], viewerId);
     }
 
     case 'get_chunk': {
@@ -236,7 +274,7 @@ export async function executeAgentTool(
       if (typeof chunkId !== 'string' || chunkId === '') {
         return invalidArg('chunkId (string) is required');
       }
-      return getChunkById(chunkId);
+      return getChunkById(chunkId, viewerId);
     }
 
     case 'get_document': {
@@ -244,7 +282,7 @@ export async function executeAgentTool(
       if (typeof filePath !== 'string' || filePath === '') {
         return invalidArg('filePath (string) is required');
       }
-      return getDocument(filePath, db);
+      return getDocument(filePath, viewerId, db);
     }
   }
 }
