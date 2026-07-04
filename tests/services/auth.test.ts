@@ -57,6 +57,23 @@ describe('authPlugin', () => {
     // handler based, so any path under /api/auth/ exercises it.
     app.post('/api/auth/login', async () => ({ ok: true }));
 
+    // Stand-in for SPA page routes (FR-25). The real
+    // src/server/spa.ts serves index.html; here we just need a
+    // handler that mimics the text/html content-type so the test
+    // can assert the authPlugin didn't 401 the request.
+    app.get('/chat', async (_req, reply) => {
+      reply.type('text/html; charset=utf-8');
+      return '<!doctype html><title>DocKhoj</title>';
+    });
+    app.get('/upload', async (_req, reply) => {
+      reply.type('text/html; charset=utf-8');
+      return '<!doctype html>';
+    });
+    app.get('/login', async (_req, reply) => {
+      reply.type('text/html; charset=utf-8');
+      return '<!doctype html>';
+    });
+
     await app.register(authPlugin);
     await app.ready();
   });
@@ -175,6 +192,32 @@ describe('authPlugin', () => {
     });
     expect(res.statusCode).toBe(401);
     expect(res.json()).toEqual({ error: 'Authentication required' });
+  });
+
+  // p4-T21 / FR-25: SPA page routes must NOT be gated by auth —
+  // the SPA fallback (src/server/spa.ts) serves index.html so the
+  // client-side RouteGuard can redirect to /login?next=… .
+  it('lets /chat through without a cookie (SPA page route, FR-25)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/chat' });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/html');
+  });
+
+  it('lets /upload through without a cookie (SPA page route, FR-25)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/upload' });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('lets /login through without a cookie (SPA page route, FR-25)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/login' });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it('still 401s on /api/* (except /api/auth/* + /api/health) when no cookie is set', async () => {
+    // Regression guard: the broadened isPublic() must not have
+    // accidentally swallowed /api/* protection.
+    const res = await app.inject({ method: 'GET', url: '/api/protected' });
+    expect(res.statusCode).toBe(401);
   });
 });
 

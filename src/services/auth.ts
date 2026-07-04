@@ -12,6 +12,12 @@ import { UserStore } from './user-store.js';
 // rolling expiry. On a miss, the request is short-circuited with
 // 401 JSON.
 //
+// Per FR-25: SPA page routes (/chat, /upload, /login, …) are NOT
+// gated — they're served by the SPA fallback (src/server/spa.ts)
+// which returns index.html so the client-side RouteGuard can
+// redirect unauthenticated users to /login?next=… . Only /api/* is
+// the trust boundary that requires a session.
+//
 // The cookie name is fixed (`dockhoj_sid`) per design.md §"API
 // surface". We parse it from the raw Cookie header — no
 // @fastify/cookie dependency (the SPA is same-origin so the cookie
@@ -26,7 +32,12 @@ declare module 'fastify' {
 const SESSION_COOKIE = 'dockhoj_sid';
 
 function isPublic(url: string): boolean {
-  return url === '/api/health' || url.startsWith('/api/auth/');
+  // SPA page routes are publicly served; index.html lets the client
+  // router handle auth UX. /api/* (except /api/auth/* + /api/health)
+  // is the only path that requires a session (FR-20..25).
+  return !url.startsWith('/api/')
+      || url === '/api/health'
+      || url.startsWith('/api/auth/');
 }
 
 function parseCookieSid(rawCookieHeader: string | undefined): string | null {
