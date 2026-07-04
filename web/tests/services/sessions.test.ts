@@ -9,6 +9,8 @@ import {
   loadActiveSessionId,
   saveActiveSessionId,
   clearActiveSessionId,
+  getPinnedIds,
+  togglePinnedId,
   type Conversation,
   type Message,
 } from '../../src/services/sessions';
@@ -154,6 +156,49 @@ describe('active session localStorage helpers', () => {
     saveActiveSessionId('s1');
     clearActiveSessionId();
     expect(loadActiveSessionId()).toBeNull();
+  });
+
+  it('getPinnedIds returns an empty array when nothing is pinned', () => {
+    expect(getPinnedIds()).toEqual([]);
+  });
+
+  it('togglePinnedId adds a new id and returns true', () => {
+    const result = togglePinnedId('sess-1');
+    expect(result).toBe(true);
+    expect(getPinnedIds()).toEqual(['sess-1']);
+  });
+
+  it('togglePinnedId removes an existing id and returns false', () => {
+    togglePinnedId('sess-1');
+    const result = togglePinnedId('sess-1');
+    expect(result).toBe(false);
+    expect(getPinnedIds()).toEqual([]);
+  });
+
+  it('togglePinnedId prepends new ids (most recent pin first)', () => {
+    togglePinnedId('a');
+    togglePinnedId('b');
+    expect(getPinnedIds()).toEqual(['b', 'a']);
+  });
+
+  it('getPinnedIds filters out non-string entries gracefully', () => {
+    localStorage.setItem('dockhoj.pinned', JSON.stringify(['a', null, 3, 'b']));
+    expect(getPinnedIds()).toEqual(['a', 'b']);
+  });
+
+  it('getPinnedIds returns empty array on bad JSON', () => {
+    localStorage.setItem('dockhoj.pinned', '{bad json');
+    expect(getPinnedIds()).toEqual([]);
+  });
+
+  it('togglePinnedId swallows errors when localStorage throws', () => {
+    const orig = localStorage.setItem;
+    localStorage.setItem = () => { throw new Error('QuotaExceeded'); };
+    try {
+      expect(() => togglePinnedId('boom')).not.toThrow();
+    } finally {
+      localStorage.setItem = orig;
+    }
   });
 
   it('swallows errors when localStorage throws (private mode)', () => {

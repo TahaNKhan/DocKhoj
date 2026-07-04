@@ -1,10 +1,10 @@
+import { useState } from 'preact/hooks';
 import type { Conversation } from '../services/sessions';
+import { getPinnedIds, togglePinnedId } from '../services/sessions';
 
-// Sidebar — Sessions (with active state) + Pinned section + footer
-// indicator. p2-T09 replaces the seed list with a real `sessions` prop
-// fed from /api/sessions. The "Pinned" section is decorative for now
-// (p2-T09+ keeps it on the design canvas but doesn't wire it to the
-// backend).
+// Sidebar — Sessions + Pinned section + footer indicator. Pinned
+// sessions are stored in localStorage and displayed in a separate
+// section above the unpinned list.
 
 interface Props {
   sessions: Conversation[];
@@ -18,6 +18,20 @@ interface Props {
 }
 
 export function Sidebar({ sessions, activeId, open, onClose, onSelect, onCreate, onRename, onDelete }: Props) {
+  const [pinnedIds, setPinnedIds] = useState<string[]>(getPinnedIds);
+
+  const pinned = sessions.filter((s) => pinnedIds.includes(s.id));
+  const unpinned = sessions.filter((s) => !pinnedIds.includes(s.id));
+
+  function handleTogglePin(id: string) {
+    const nowPinned = togglePinnedId(id);
+    setPinnedIds(getPinnedIds());
+    // If the session was just unpinned and it's the active one, we
+    // still keep it selected — the user just unpinned it, they didn't
+    // navigate away.
+    return nowPinned;
+  }
+
   return (
     <aside id="sidebar" class={`side${open ? ' open' : ''}`}>
       <div class="side-brand">
@@ -26,6 +40,25 @@ export function Sidebar({ sessions, activeId, open, onClose, onSelect, onCreate,
           DocKhoj<i>.</i>
         </span>
       </div>
+
+      {pinned.length > 0 && (
+        <div>
+          <h4>Pinned</h4>
+          {pinned.map((s) => (
+            <SessionRow
+              key={s.id}
+              session={s}
+              active={s.id === activeId}
+              pinned={true}
+              onSelect={onSelect}
+              onRename={onRename}
+              onDelete={onDelete}
+              onTogglePin={handleTogglePin}
+            />
+          ))}
+        </div>
+      )}
+
       <div>
         <h4>
           Sessions{' '}
@@ -38,7 +71,7 @@ export function Sidebar({ sessions, activeId, open, onClose, onSelect, onCreate,
             +
           </i>
         </h4>
-        {sessions.length === 0 && (
+        {unpinned.length === 0 && sessions.length === 0 && (
           <div class="session" style={{ cursor: 'default' }}>
             <div class="t" style={{ color: 'var(--muted)' }}>
               No sessions yet
@@ -46,26 +79,26 @@ export function Sidebar({ sessions, activeId, open, onClose, onSelect, onCreate,
             <div class="s">click + to start</div>
           </div>
         )}
-        {sessions.map((s) => (
+        {unpinned.map((s) => (
           <SessionRow
             key={s.id}
             session={s}
             active={s.id === activeId}
+            pinned={false}
             onSelect={onSelect}
             onRename={onRename}
             onDelete={onDelete}
+            onTogglePin={handleTogglePin}
           />
         ))}
-      </div>
-
-      <div>
-        <h4>Pinned</h4>
-        <div class="session" style={{ cursor: 'default' }}>
-          <div class="t" style={{ color: 'var(--muted)' }}>
-            —
+        {sessions.length > 0 && unpinned.length === 0 && (
+          <div class="session" style={{ cursor: 'default' }}>
+            <div class="t" style={{ color: 'var(--muted)' }}>
+              all sessions pinned
+            </div>
+            <div class="s">unpin one to see it here</div>
           </div>
-          <div class="s">no pinned items</div>
-        </div>
+        )}
       </div>
 
       <div class="side-foot">
@@ -80,25 +113,25 @@ export function Sidebar({ sessions, activeId, open, onClose, onSelect, onCreate,
 interface RowProps {
   session: Conversation;
   active: boolean;
+  pinned: boolean;
   onSelect: (id: string) => void;
   onRename?: (id: string, currentTitle: string) => void;
   onDelete?: (id: string) => void;
+  onTogglePin: (id: string) => boolean;
 }
 
-function SessionRow({ session, active, onSelect, onRename, onDelete }: RowProps) {
-  // Lightweight relative-time string from the ISO updated_at. Kept
-  // simple — the design's "2h ago" / "yesterday" / "jan 12" format is
-  // mockup-only; this is functional.
+function SessionRow({ session, active, pinned, onSelect, onRename, onDelete, onTogglePin }: RowProps) {
   const rel = relativeTime(session.updatedAt);
   const sources = session.messageCount > 0 ? `${session.messageCount} msgs` : 'empty';
 
   // The × button is the discoverable delete surface; right-click is
   // still wired for desktop power-users. The button sits in the
   // top-right of the row, hidden on hover for desktop and always
-  // visible on touch (where hover doesn't exist).
+  // visible on touch (where hover doesn't exist). The pin button
+  // sits in the bottom-right of the row.
   return (
     <div
-      class={`session${active ? ' active' : ''}`}
+      class={`session${active ? ' active' : ''}${pinned ? ' pinned' : ''}`}
       onClick={() => onSelect(session.id)}
       onDoubleClick={() => onRename?.(session.id, session.title)}
       onContextMenu={(e) => {
@@ -121,8 +154,6 @@ function SessionRow({ session, active, onSelect, onRename, onDelete }: RowProps)
           aria-label={`Delete session ${session.title}`}
           title="Delete session"
           onClick={(e) => {
-            // Stop the click from bubbling to the row's onSelect —
-            // tapping × shouldn't switch to this session first.
             e.stopPropagation();
             if (confirm(`Delete "${session.title}" and its messages?`)) {
               onDelete(session.id);
@@ -132,6 +163,22 @@ function SessionRow({ session, active, onSelect, onRename, onDelete }: RowProps)
           ×
         </button>
       )}
+      <button
+        class={`pin-btn${pinned ? ' pinned' : ''}`}
+        aria-label={pinned ? 'Unpin session' : 'Pin session'}
+        title={pinned ? 'Unpin' : 'Pin'}
+        onClick={(e) => {
+          e.stopPropagation();
+          onTogglePin(session.id);
+        }}
+      >
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+          <path
+            d="M9 4.5V2h1V1H2v1h1v2.5L1.5 8v1h3.75v3h1.5V9H10.5V8L9 4.5Z"
+            fill="currentColor"
+          />
+        </svg>
+      </button>
     </div>
   );
 }

@@ -118,3 +118,41 @@ export function clearActiveSessionId(): void {
     /* noop */
   }
 }
+
+// Pinned sessions — stored as a sorted JSON array of session IDs in
+// localStorage. The caller decides sort order; the storage layer just
+// persists the set.
+
+const PINNED_KEY = 'dockhoj.pinned';
+
+export function getPinnedIds(): string[] {
+  try {
+    const raw = localStorage.getItem(PINNED_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((s): s is string => typeof s === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function savePinnedIds(ids: string[]): void {
+  try {
+    localStorage.setItem(PINNED_KEY, JSON.stringify(ids));
+  } catch {
+    /* best-effort */
+  }
+}
+
+export function togglePinnedId(id: string): boolean {
+  const ids = getPinnedIds();
+  const idx = ids.indexOf(id);
+  if (idx !== -1) {
+    ids.splice(idx, 1);
+    savePinnedIds(ids);
+    return false; // no longer pinned
+  }
+  ids.unshift(id);
+  savePinnedIds(ids);
+  return true; // now pinned
+}

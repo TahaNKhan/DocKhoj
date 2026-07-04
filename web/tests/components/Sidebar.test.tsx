@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, cleanup, fireEvent } from '@testing-library/preact';
+import { render, cleanup, fireEvent, waitFor } from '@testing-library/preact';
 import { Sidebar } from '../../src/components/Sidebar';
+import { getPinnedIds, togglePinnedId } from '../../src/services/sessions';
 import type { Conversation } from '../../src/services/sessions';
 
 // Small follow-up (post-p3): every session row gets an explicit ×
@@ -142,5 +143,101 @@ describe('Sidebar — per-row delete button', () => {
     );
     fireEvent.click(container.querySelector('.session .t')!);
     expect(onSelect).toHaveBeenCalledWith('pick-me');
+  });
+});
+
+describe('Sidebar — pin button', () => {
+  beforeEach(() => {
+    // Clean localStorage before each test so pin state is isolated.
+    localStorage.removeItem('dockhoj.pinned');
+  });
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('renders a .pin-btn on each session row', () => {
+    const { container } = render(
+      <Sidebar
+        sessions={[makeSession({ id: 'a' }), makeSession({ id: 'b' })]}
+        activeId={null}
+        open={false}
+        onClose={() => {}}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+      />
+    );
+    expect(container.querySelectorAll('.session .pin-btn')).toHaveLength(2);
+  });
+
+  it('clicking pin toggles the pinned class and persists to localStorage', async () => {
+    const { container } = render(
+      <Sidebar
+        sessions={[makeSession({ id: 'pin-me' })]}
+        activeId={null}
+        open={false}
+        onClose={() => {}}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+      />
+    );
+
+    fireEvent.click(container.querySelector('.pin-btn')!);
+    await waitFor(() => {
+      expect(container.querySelector('.pin-btn')!.classList.contains('pinned')).toBe(true);
+    });
+    expect(getPinnedIds()).toContain('pin-me');
+
+    fireEvent.click(container.querySelector('.pin-btn')!);
+    await waitFor(() => {
+      expect(container.querySelector('.pin-btn')!.classList.contains('pinned')).toBe(false);
+    });
+    expect(getPinnedIds()).not.toContain('pin-me');
+  });
+
+  it('pinned session appears in the Pinned section, not Sessions', () => {
+    togglePinnedId('pin-a');
+    const { container } = render(
+      <Sidebar
+        sessions={[makeSession({ id: 'pin-a', title: 'pinned one' }), makeSession({ id: 'unpin-b', title: 'normal' })]}
+        activeId={null}
+        open={false}
+        onClose={() => {}}
+        onSelect={() => {}}
+        onCreate={() => {}}
+        onDelete={() => {}}
+      />
+    );
+    // The pinned section heading exists with the pinned session.
+    const headings = container.querySelectorAll('h4');
+    const pinnedHeading = Array.from(headings).find((h) => h.textContent === 'Pinned');
+    expect(pinnedHeading).toBeTruthy();
+
+    // The pinned session title is rendered.
+    const titles = container.querySelectorAll('.session .t');
+    const pinnedTitle = Array.from(titles).find((t) => t.textContent === 'pinned one');
+    expect(pinnedTitle).toBeTruthy();
+
+    // The unpinned session is still visible.
+    const normalTitle = Array.from(titles).find((t) => t.textContent === 'normal');
+    expect(normalTitle).toBeTruthy();
+  });
+
+  it('clicking pin does NOT trigger onSelect', () => {
+    const onSelect = vi.fn();
+    const { container } = render(
+      <Sidebar
+        sessions={[makeSession({ id: 'no-select' })]}
+        activeId={null}
+        open={false}
+        onClose={() => {}}
+        onSelect={onSelect}
+        onCreate={() => {}}
+        onDelete={() => {}}
+      />
+    );
+    fireEvent.click(container.querySelector('.pin-btn')!);
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });
