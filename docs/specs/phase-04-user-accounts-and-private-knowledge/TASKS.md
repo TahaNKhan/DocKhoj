@@ -21,7 +21,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
 
 - **Description.** Write and verify migration files. Apply against a fresh volume to verify.
   - `005_users.sql` — `users`, `auth_sessions`, `invites` tables per `design.md` §"Data model".
-  - `005_documents_owner.sql` — `ALTER TABLE documents ADD COLUMN owner_id TEXT REFERENCES users(id) ON DELETE SET NULL;`; `ALTER TABLE documents ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','private'));`. Legacy rows get the default (`NULL`, `'public'`).
+  - `006_documents_owner.sql` — `ALTER TABLE documents ADD COLUMN owner_id TEXT REFERENCES users(id) ON DELETE SET NULL;`; `ALTER TABLE documents ADD COLUMN visibility TEXT NOT NULL DEFAULT 'public' CHECK (visibility IN ('public','private'));`. Legacy rows get the default (`NULL`, `'public'`).
 - **Maps to requirements.** FR-26; FR-1/2/3 (table shape).
 - **Maps to design.** §"Data model"; §"Implementation order" step 2.
 - **Acceptance criteria.**
@@ -233,7 +233,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
 ## T14. Migration 006 (chat sessions ownership + delete legacy) + conversation scoping
 
 - **Description.**
-  - Write `006_chat_sessions_owner.sql`:
+  - Write `007_chat_sessions_owner.sql`:
     - `ALTER TABLE sessions ADD COLUMN owner_id TEXT REFERENCES users(id) ON DELETE CASCADE;`
     - `DELETE FROM sessions;` (cascades to `messages`).
   - Update `services/conversations.ts` to write/read `owner_id`.
