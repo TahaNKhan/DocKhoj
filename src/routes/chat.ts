@@ -83,8 +83,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
       // requester. Without this, chat would leak foreign private
       // chunks into the prompt. request.user is populated by the
       // auth plugin (p4-T05); non-null by the time we get here.
-      const baseResults = await searchChunks(queryVector, { limit: limitNum }, request.user.id);
-      const results = await expandHits(baseResults, { mode: expandMode }, request.user.id);
+      const viewerId = request.user!.id;
+      const baseResults = await searchChunks(queryVector, { limit: limitNum }, viewerId);
+      const results = await expandHits(baseResults, { mode: expandMode }, viewerId);
 
       if (results.length === 0) {
         log.info({ sessionId: sid }, 'No relevant documents found');
