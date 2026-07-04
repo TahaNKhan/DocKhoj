@@ -9,6 +9,7 @@ The currently-active phase (if any) is the only one with non-`done` tasks; all o
 - **Phase 01 — Smart Chunker & Cleanup** — [`docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md`](./docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md) — p1-T01 … p1-T21. **Done** (per spec README + git log `9bb6cf3` … `014a4f2`).
 - **Phase 02 — Frontend, Streaming, and Persistence** — [`docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md`](./docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md) — p2-T01 … p2-T26 (p2-T21 … p2-T26 are post-spec priority follow-ups). **Done** (per spec README + git log `2c81035` … `6425682`).
 - **Phase 03 — Document Deletion and Agentic RAG** — [`docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md`](./docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md) — p3-T01 … p3-T11, plus post-ship UX + streaming follow-ups p3-T12 … p3-T16. **Done**.
+- **Phase 04 — User Accounts and Private Knowledge** — [`docs/specs/phase-04-user-accounts-and-private-knowledge/TASKS.md`](./docs/specs/phase-04-user-accounts-and-private-knowledge/TASKS.md) — p4-T01 … p4-T21. **In-progress** (spec + implementation both on `main`; per-step commits land on `main` with optional short-lived worktree isolation per `phase-swarm` skill).
 
 ## Numbering
 
