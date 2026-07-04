@@ -166,17 +166,20 @@ describe('DocumentStore', () => {
   });
 
   it('count returns the number of rows visible to the viewer (own + shared)', () => {
-    // Per p4-T15, count() now scopes by viewerId. The 4 doc rows:
+    // Per p4-T15 / FR-34, count() matches list(): the viewer's own
+    // rows + legacy shared (owner_id IS NULL). Foreign-public rows
+    // are NOT in the documents count — they're only surfaced via
+    // Qdrant search/chat (FR-32 / FR-38). The 4 doc rows:
     //   alice-private → alice only
-    //   alice-public  → alice + bob (public → shared-after-public-row)
+    //   alice-public  → alice only (her own row)
     //   bob-private   → bob only
-    //   bob-public    → bob + alice
+    //   bob-public    → bob only (his own row)
     store.insert(row({ fileId: 'alice-private', fileName: 'a1.md', ownerId: aliceId, visibility: 'private' }));
     store.insert(row({ fileId: 'alice-public', fileName: 'a2.md', ownerId: aliceId, visibility: 'public' }));
     store.insert(row({ fileId: 'bob-private', fileName: 'b1.md', ownerId: bobId, visibility: 'private' }));
     store.insert(row({ fileId: 'bob-public', fileName: 'b2.md', ownerId: bobId, visibility: 'public' }));
-    expect(store.count(aliceId)).toBe(3);
-    expect(store.count(bobId)).toBe(3);
+    expect(store.count(aliceId)).toBe(2);
+    expect(store.count(bobId)).toBe(2);
     // An empty viewerId still matches shared (owner_id IS NULL).
     expect(store.count('')).toBe(0);
   });
@@ -184,8 +187,9 @@ describe('DocumentStore', () => {
   it('count hides foreign private files from the viewer', () => {
     store.insert(row({ fileId: 'alice-private', fileName: 'a.md', ownerId: aliceId, visibility: 'private' }));
     store.insert(row({ fileId: 'bob-private', fileName: 'b.md', ownerId: bobId, visibility: 'private' }));
-    // Bob should not see Alice's private file in the documents count.
-    expect(store.count(bobId)).toBe(0);
+    // Bob sees only his own private row; Alice's is foreign-private
+    // and excluded. Alice sees only her own private row.
+    expect(store.count(bobId)).toBe(1);
     expect(store.count(aliceId)).toBe(1);
   });
 

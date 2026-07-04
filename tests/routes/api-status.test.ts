@@ -221,8 +221,12 @@ describe('GET /api/status', () => {
       ownerId: bobId,
       visibility: 'private',
     });
-    // A public (shared) file — Bob DOES see this because
-    // visibility='public' is reachable from anyone.
+    // A public file owned by Alice. Per FR-34, foreign-public rows
+    // are NOT in the documents list — they're only surfaced via
+    // Qdrant search/chat (FR-32 / FR-38). So the documents count
+    // treats this row the same as a private one for list purposes:
+    // only its owner (Alice) sees it in /api/documents and in
+    // /api/status's documents field.
     store.insert({
       fileId: 'alice-public',
       fileName: 'ap.md',
@@ -236,15 +240,15 @@ describe('GET /api/status', () => {
     app.decorate('db', db);
     await app.register(authPlugin);
     await app.register(statusRoutes);
-    // Inject as Bob — Bob should see his own private (1) + Alice's
-    // public (1), but NOT Alice's private.
+    // Inject as Bob — Bob sees only his own private (1); Alice's
+    // private and public are foreign to him and excluded by FR-34.
     const cookie = await mintSessionCookie(app, db, bobId);
     const res = await app.inject({
       method: 'GET',
       url: '/api/status',
       headers: { cookie },
     });
-    expect(res.json().documents).toBe(2);
+    expect(res.json().documents).toBe(1);
     // And as Alice — Alice sees both of hers (private + public).
     const aliceCookie = await mintSessionCookie(app, db, aliceId);
     const resAlice = await app.inject({
@@ -255,10 +259,10 @@ describe('GET /api/status', () => {
     expect(resAlice.json().documents).toBe(2);
     // Crucially: neither sees the other's PRIVATE doc. Direct
     // count confirms.
-    expect(new DocumentStore(db).count(bobId)).toBe(2);
+    expect(new DocumentStore(db).count(bobId)).toBe(1);
     expect(new DocumentStore(db).count(aliceId)).toBe(2);
-    // Empty viewerId matches shared only — neither private file is
-    // shared (both have non-NULL owner_id), so 0.
+    // Empty viewerId matches shared only — neither file has
+    // owner_id IS NULL, so 0.
     expect(new DocumentStore(db).count('')).toBe(0);
     await app.close();
     db.close();

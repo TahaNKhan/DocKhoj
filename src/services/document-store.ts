@@ -173,13 +173,14 @@ export class DocumentStore {
   }
 
   /** Count of documents the viewer can see (p4-T15 / FR-15 /
-   *  FR-20): shared rows + the viewer's own private rows. Used by
-   *  /api/status for the TopBar chrome so the badge reflects what
-   *  the user actually has access to. Empty result counts as 0,
-   *  not null. The `viewerId` argument is required — call sites
-   *  that want the global count can pass the empty string
-   *  (mirrors Phase 03 behavior — see
-   *  isDocumentVisibleTo in agent-tools.ts for the rule). */
+   *  FR-20 / FR-34): the viewer's own rows + legacy shared rows
+   *  (owner_id IS NULL). Foreign-public rows are intentionally NOT
+   *  included here — the documents list endpoint follows FR-34
+   *  ("files I own + owner_id = NULL"); foreign-public rows are
+   *  only surfaced via Qdrant search / chat (FR-38 / FR-32 via
+   *  buildVisibilityFilter). Used by /api/status so the TopBar
+   *  badge matches what the user actually sees in the documents
+   *  list. Empty result counts as 0, not null. */
   count(viewerId: string): number {
     const row = this.db
       .prepare(
