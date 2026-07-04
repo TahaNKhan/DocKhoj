@@ -47,7 +47,13 @@ export async function* streamChatCompletion(
   // DocumentChunk objects so the SPA can render [Source N] fileName
   // pageNumber headingPath score immediately.
   const queryVector = await embedText(params.question);
-  const baseResults = await searchChunks(queryVector, { limit: params.limit ?? 5 }, params.viewerId);
+  const baseResults = await searchChunks(queryVector, {
+    limit: params.limit ?? 5,
+    // Phase 05 / p5-T02 / FR-5 — raw question feeds the lexical
+    // prefetch. Hybrid recall helps when the user pastes a
+    // specific token or code name.
+    query: params.question,
+  }, params.viewerId);
   const results = await expandHits(baseResults, { mode: params.expandMode ?? 'none' }, params.viewerId);
 
   yield { type: 'sources', sources: results };

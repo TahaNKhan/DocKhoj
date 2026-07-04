@@ -70,6 +70,13 @@ export interface SearchOptions {
   fileName?: string;
   fileType?: string;
   pageNumber?: number;
+  // Phase 05 / p5-T02 / FR-5 — raw user query string for the
+  // lexical prefetch. When present, searchChunks runs two
+  // prefetches (dense + full-text) fused via Qdrant-native RRF.
+  // Optional — when absent, searchChunks falls back to a single
+  // dense prefetch (preserves the dense-only behavior the
+  // visibility tests still exercise).
+  query?: string;
 }
 
 export type ExpandMode = 'none' | 'siblings' | 'sections';
@@ -519,12 +526,54 @@ export async function searchChunks(
 ): Promise<DocumentChunk[]> {
   const limit = opts.limit ?? 5;
   const filter = mergeWithVisibility(buildSearchFilter(opts), viewerId);
-  log.debug({ limit, hasFilter: !!filter }, 'Searching');
 
+  // Phase 05 / p5-T02 / FR-4 — over-fetch per prefetch so RRF has
+  // enough candidates to rank. RRF combines two ranked lists; each
+  // list needs to be larger than the final cut to avoid ties
+  // knocking out good candidates. * 2 is the conventional over-fetch
+  // for a 2-way fusion; the max(..., 10) floor keeps tiny `limit`
+  // calls from over-fetching trivially.
+  const prefetchLimit = Math.max(limit, 10) * 2;
+
+  // Dense cosine prefetch — present in every call. Visibility is
+  // applied at the top-level fused step, not per-prefetch, so a
+  // chunk that survives RRF and isn't visible to the requester is
+  // dropped there. Saves a per-prefetch mergeWithVisibility call.
+  const prefetches: Array<Record<string, unknown>> = [
+    { query: queryVector, limit: prefetchLimit },
+  ];
+
+  // Lexical prefetch — only when we have the raw text. Filter-only
+  // prefetch with `match: { text: q }` against the searchText
+  // payload index (created in ensurePayloadIndexes, p5-T01).
+  // ponytail: `query: undefined` serializes cleanly; the JS SDK
+  // drops undefined keys from the JSON body. Setting
+  // `query: null` would also work but undefined keeps the wire
+  // shape minimal.
+  if (typeof opts.query === 'string' && opts.query.length > 0) {
+    prefetches.push({
+      query: undefined,
+      filter: {
+        must: [{ key: 'searchText', match: { text: opts.query } }],
+      },
+      limit: prefetchLimit,
+    });
+  }
+
+  log.debug(
+    { limit, hasFilter: !!filter, prefetchCount: prefetches.length, hasQuery: !!opts.query },
+    'Searching'
+  );
+
+  // Qdrant-native RRF over the prefetches. The top-level `query`
+  // field is a FusionQuery — `fusion: 'rrf'` picks the default RRF
+  // parameters (rankConstant=60). The top-level `filter` runs against
+  // the fused candidate set, so visibility scoping applies once.
   const response = await client.query(COLLECTION_NAME, {
-    query: queryVector,
-    limit,
+    prefetch: prefetches,
+    query: { fusion: 'rrf' },
     filter: filter as unknown as Record<string, unknown> | undefined,
+    limit,
     with_payload: true,
   });
 

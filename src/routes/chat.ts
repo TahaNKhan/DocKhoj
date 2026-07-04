@@ -84,7 +84,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
       // chunks into the prompt. request.user is populated by the
       // auth plugin (p4-T05); non-null by the time we get here.
       const viewerId = request.user!.id;
-      const baseResults = await searchChunks(queryVector, { limit: limitNum }, viewerId);
+      const baseResults = await searchChunks(queryVector, {
+        limit: limitNum,
+        // Phase 05 / p5-T02 / FR-5 — raw query string feeds the
+        // lexical prefetch. Hybrid recall helps chat questions
+        // that name specific tokens (error codes, identifiers).
+        query: q,
+      }, viewerId);
       const results = await expandHits(baseResults, { mode: expandMode }, viewerId);
 
       if (results.length === 0) {

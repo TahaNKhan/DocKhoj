@@ -25,7 +25,7 @@ Each task ends with: `./restart.sh` (clean rebuild + smoke) AND `npm test -- --r
   - No `searchChunks` call site touched in this task (signature unchanged). Visibility tests untouched.
 - **Dependencies.** none.
 - **Estimate.** S.
-- **Status.** todo.
+- **Status.** done.
 
 ## T2. Hybrid `searchChunks` + thread `query` through callers
 

@@ -137,6 +137,93 @@ describe('searchChunks', () => {
     const call = mockQuery.mock.calls[0];
     expect(call[1].limit).toBe(7);
   });
+
+  // Phase 05 / p5-T02 / FR-4 — hybrid query: two prefetches
+  // (dense + lexical) fused via RRF, top-level filter carrying
+  // visibility, top-level limit honored. This test pins the
+  // shape that production code issues to Qdrant.
+  it('hybrid: two prefetches + RRF fusion + lexical filter + top-level filter', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+    await searchChunks([0.1, 0.2], { limit: 5, query: 'hello world' }, 'viewer-1');
+
+    const call = mockQuery.mock.calls[0];
+    expect(call[0]).toBe('documents_test');
+
+    const args = call[1];
+    // RRF fusion at the top level.
+    expect(args.query).toEqual({ fusion: 'rrf' });
+    expect(args.limit).toBe(5);
+    expect(args.with_payload).toBe(true);
+
+    // Prefetch array has exactly two entries.
+    expect(Array.isArray(args.prefetch)).toBe(true);
+    expect(args.prefetch).toHaveLength(2);
+
+    // Prefetch 0 — dense cosine, no filter (visibility runs at top level).
+    expect(args.prefetch[0].query).toEqual([0.1, 0.2]);
+    expect(args.prefetch[0].limit).toBe(20); // max(5, 10) * 2
+    expect(args.prefetch[0].filter).toBeUndefined();
+
+    // Prefetch 1 — lexical, no `query:`, filter on searchText.
+    expect(args.prefetch[1].query).toBeUndefined();
+    expect(args.prefetch[1].filter).toEqual({
+      must: [{ key: 'searchText', match: { text: 'hello world' } }],
+    });
+    expect(args.prefetch[1].limit).toBe(20);
+
+    // Top-level filter merges the visibility should-group with
+    // buildSearchFilter (empty here, no fileName/fileType/pageNumber).
+    expect(args.filter).toBeDefined();
+    const filterJson = JSON.stringify(args.filter);
+    expect(filterJson).toContain('viewer-1');
+    expect(filterJson).toContain('public');
+  });
+
+  // Phase 05 / p5-T02 / FR-5 — when `opts.query` is absent,
+  // searchChunks falls back to dense-only (single prefetch). This
+  // is the path the visibility tests exercise, and the graceful
+  // degradation for any internal caller that hasn't been threaded.
+  it('falls back to dense-only when opts.query is missing', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+    await searchChunks([0.1], { limit: 5 });
+
+    const args = mockQuery.mock.calls[0][1];
+    expect(Array.isArray(args.prefetch)).toBe(true);
+    expect(args.prefetch).toHaveLength(1);
+    expect(args.prefetch[0].query).toEqual([0.1]);
+    expect(args.prefetch[0].limit).toBe(20);
+    // RRF is still declared at the top level — Qdrant accepts a
+    // single-prefetch RRF call, returning that prefetch's ranking.
+    expect(args.query).toEqual({ fusion: 'rrf' });
+  });
+
+  it('falls back to dense-only when opts.query is empty string', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+    await searchChunks([0.1], { limit: 5, query: '' });
+
+    const args = mockQuery.mock.calls[0][1];
+    expect(args.prefetch).toHaveLength(1);
+  });
+
+  it('prefetch limit over-fetches as max(limit, 10) * 2', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+    await searchChunks([0.1], { limit: 3, query: 'q' });
+
+    const args = mockQuery.mock.calls[0][1];
+    // max(3, 10) * 2 = 20 — the floor dominates for small `limit`s.
+    expect(args.prefetch[0].limit).toBe(20);
+    expect(args.prefetch[1].limit).toBe(20);
+  });
+
+  it('prefetch limit scales up for large `limit`', async () => {
+    mockQuery.mockResolvedValueOnce([]);
+    await searchChunks([0.1], { limit: 15, query: 'q' });
+
+    const args = mockQuery.mock.calls[0][1];
+    // max(15, 10) * 2 = 30.
+    expect(args.prefetch[0].limit).toBe(30);
+    expect(args.prefetch[1].limit).toBe(30);
+  });
 });
 
 describe('expandHits', () => {

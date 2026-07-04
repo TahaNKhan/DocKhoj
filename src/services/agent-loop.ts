@@ -135,7 +135,12 @@ export interface AgentLoopDeps {
   embedText: (text: string) => Promise<number[]>;
   searchChunks: (
     vector: number[],
-    opts: { limit?: number },
+    // Phase 05 / p5-T02 / FR-5 — `query` rides into the lexical
+    // prefetch when the caller supplies it. Optional in the DI
+    // surface so test mocks that ignore args still typecheck;
+    // the production call site (streamAgentChat below) always
+    // supplies it.
+    opts: { limit?: number; query?: string },
     // Phase 04 / p4-T11 — viewerId is the optional third arg
     // matching qdrant.searchChunks's signature. Tests that supply
     // their own mock (`async () => ...`) are unaffected since
@@ -240,7 +245,13 @@ export async function* streamAgentChat(
   }
   if (signal.aborted) return;
 
-  const baseResults = await deps.searchChunks(queryVector, { limit }, params.viewerId);
+  const baseResults = await deps.searchChunks(queryVector, {
+    limit,
+    // Phase 05 / p5-T02 / FR-5 — raw question feeds the lexical
+    // prefetch. The agent loop's initial retrieval is the same
+    // call shape as the chat and search paths.
+    query: params.question,
+  }, params.viewerId);
   if (signal.aborted) return;
   yield { type: 'sources', sources: baseResults };
 

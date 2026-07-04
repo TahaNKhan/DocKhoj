@@ -55,6 +55,9 @@ export async function searchRoutes(fastify: FastifyInstance) {
         limit: limitNum,
         fileName,
         fileType,
+        // Phase 05 / p5-T02 / FR-5 — raw query string rides into the
+        // lexical prefetch. Falls back to dense-only if absent.
+        query: q,
       }, viewerId);
       const results = await expandHits(baseResults, { mode: expandMode }, viewerId);
 
@@ -96,6 +99,8 @@ export async function searchRoutes(fastify: FastifyInstance) {
         limit: limitNum,
         fileName,
         fileType,
+        // Phase 05 / p5-T02 / FR-5 — see /api/search above.
+        query: q,
       }, viewerId);
       const results = await expandHits(baseResults, { mode: expandMode }, viewerId);
 

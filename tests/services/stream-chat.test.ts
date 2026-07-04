@@ -95,7 +95,7 @@ describe('streamChatCompletion', () => {
     }
 
     expect(mockEmbedText).toHaveBeenCalledWith('What is Y?');
-    expect(mockSearchChunks).toHaveBeenCalledWith([0.5, 0.5, 0.5], { limit: 5 }, undefined);
+    expect(mockSearchChunks).toHaveBeenCalledWith([0.5, 0.5, 0.5], { limit: 5, query: 'What is Y?' }, undefined);
   });
 
   it('uses default limit = 5 when params.limit is unset', async () => {
@@ -112,7 +112,7 @@ describe('streamChatCompletion', () => {
       /* noop */
     }
 
-    expect(mockSearchChunks).toHaveBeenCalledWith(expect.any(Array), { limit: 5 }, undefined);
+    expect(mockSearchChunks).toHaveBeenCalledWith(expect.any(Array), { query: 'q', limit: 5 }, undefined);
   });
 
   it('passes through params.limit to searchChunks', async () => {
@@ -132,7 +132,7 @@ describe('streamChatCompletion', () => {
       /* noop */
     }
 
-    expect(mockSearchChunks).toHaveBeenCalledWith(expect.any(Array), { limit: 12 }, undefined);
+    expect(mockSearchChunks).toHaveBeenCalledWith(expect.any(Array), { query: 'q', limit: 12 }, undefined);
   });
 
   it('skips empty text chunks from the upstream stream', async () => {
