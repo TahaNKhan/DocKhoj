@@ -125,13 +125,22 @@ export interface StreamAgentChatParams {
   db: DB;
   /** Optional dependency overrides (tests inject mocks here). */
   deps?: Partial<AgentLoopDeps>;
+  // Phase 04 / p4-T11 / FR-38 — requester's id; threaded into the
+  // initial searchChunks call. The agent tools (p4-T12) will thread
+  // it into their own fetches too.
+  viewerId?: string;
 }
 
 export interface AgentLoopDeps {
   embedText: (text: string) => Promise<number[]>;
   searchChunks: (
     vector: number[],
-    opts: { limit?: number }
+    opts: { limit?: number },
+    // Phase 04 / p4-T11 — viewerId is the optional third arg
+    // matching qdrant.searchChunks's signature. Tests that supply
+    // their own mock (`async () => ...`) are unaffected since
+    // extra args are ignored.
+    viewerId?: string
   ) => Promise<DocumentChunk[]>;
   streamChatCompletionWithTools: (
     messages: ChatCompletionMessageParam[],
@@ -225,7 +234,7 @@ export async function* streamAgentChat(
   }
   if (signal.aborted) return;
 
-  const baseResults = await deps.searchChunks(queryVector, { limit });
+  const baseResults = await deps.searchChunks(queryVector, { limit }, params.viewerId);
   if (signal.aborted) return;
   yield { type: 'sources', sources: baseResults };
 

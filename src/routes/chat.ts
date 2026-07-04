@@ -79,8 +79,12 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       log.debug({ questionLength: q.length, sessionId: sid, expandMode }, 'Processing chat request');
       const queryVector = await embedText(q);
-      const baseResults = await searchChunks(queryVector, { limit: limitNum });
-      const results = await expandHits(baseResults, { mode: expandMode });
+      // Phase 04 / p4-T11 / FR-38 — scope retrieval to the
+      // requester. Without this, chat would leak foreign private
+      // chunks into the prompt. request.user is populated by the
+      // auth plugin (p4-T05); non-null by the time we get here.
+      const baseResults = await searchChunks(queryVector, { limit: limitNum }, request.user.id);
+      const results = await expandHits(baseResults, { mode: expandMode }, request.user.id);
 
       if (results.length === 0) {
         log.info({ sessionId: sid }, 'No relevant documents found');

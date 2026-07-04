@@ -26,6 +26,10 @@ interface Params {
   conversationHistory?: ChatMessage[];
   limit?: number;
   expandMode?: ExpandMode;
+  // Phase 04 / p4-T11 / FR-38 — requester's id; threaded into
+  // searchChunks + expandHits so the visibility filter narrows
+  // results to what the user is allowed to see.
+  viewerId?: string;
 }
 
 function buildHistoryText(history: ChatMessage[]): string {
@@ -43,8 +47,8 @@ export async function* streamChatCompletion(
   // DocumentChunk objects so the SPA can render [Source N] fileName
   // pageNumber headingPath score immediately.
   const queryVector = await embedText(params.question);
-  const baseResults = await searchChunks(queryVector, { limit: params.limit ?? 5 });
-  const results = await expandHits(baseResults, { mode: params.expandMode ?? 'none' });
+  const baseResults = await searchChunks(queryVector, { limit: params.limit ?? 5 }, params.viewerId);
+  const results = await expandHits(baseResults, { mode: params.expandMode ?? 'none' }, params.viewerId);
 
   yield { type: 'sources', sources: results };
 

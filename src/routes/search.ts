@@ -45,12 +45,16 @@ export async function searchRoutes(fastify: FastifyInstance) {
     try {
       log.debug({ queryLength: q.length, limit: limitNum, expandMode }, 'Processing search');
       const queryVector = await embedText(q);
+      // Phase 04 / p4-T11 / FR-38 — scope retrieval to the requester.
+      // buildVisibilityFilter lives inside qdrant.ts; passing
+      // request.user.id narrows the result set so other users'
+      // private files never surface here.
       const baseResults = await searchChunks(queryVector, {
         limit: limitNum,
         fileName,
         fileType,
-      });
-      const results = await expandHits(baseResults, { mode: expandMode });
+      }, request.user.id);
+      const results = await expandHits(baseResults, { mode: expandMode }, request.user.id);
 
       log.info({ resultCount: results.length }, 'Search complete');
       return {
@@ -83,12 +87,14 @@ export async function searchRoutes(fastify: FastifyInstance) {
     try {
       log.debug({ queryLength: q.length, limit: limitNum, expandMode }, 'Processing RAG search');
       const queryVector = await embedText(q);
+      // Phase 04 / p4-T11 / FR-38 — see search() above for the
+      // viewerId rationale.
       const baseResults = await searchChunks(queryVector, {
         limit: limitNum,
         fileName,
         fileType,
-      });
-      const results = await expandHits(baseResults, { mode: expandMode });
+      }, request.user.id);
+      const results = await expandHits(baseResults, { mode: expandMode }, request.user.id);
 
       if (results.length === 0) {
         log.info('No relevant documents found for RAG search');
