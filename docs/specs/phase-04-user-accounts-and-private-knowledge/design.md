@@ -198,10 +198,12 @@ Every chunk's payload gains two fields:
 
 | Field        | Type                  | Notes                                       |
 | ------------ | --------------------- | ------------------------------------------- |
-| `ownerId`    | `string \| null`      | The owning user's id, or null for shared.   |
+| `ownerId`    | `string` (with `NO_OWNER_SENTINEL = ''` for shared) | The owning user's id, or `''` for shared. The literal `string \| null` from the requirements is mapped to `''` because Qdrant 1.17's `setPayload` treats `null` as a delete (verified empirically against a real container). The buildVisibilityFilter `match: { value: viewerId }` clause won't match `''` for any real viewer id, so the public/shared bucket stays visible only via the `visibility: 'public'` clause. |
 | `visibility` | `'public' \| 'private'` | Controls cross-user visibility.            |
 
 Payload indexes are added for both fields (keyword schema) via `ensurePayloadIndexes()`.
+
+**`setOwnerVisibility(fileId, ownerId, visibility)` filter** — the function filters Qdrant by `filePath` (not `fileId`). Chunks store `filePath = ${fileId}${ext}` (the on-disk basename — see `upload.ts:76`), so callers must pass the fileId AND extension. T9 (upload) wires both into the call.
 
 ### Relationships
 
