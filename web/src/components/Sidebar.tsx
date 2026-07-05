@@ -1,6 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { Conversation } from '../services/sessions';
 import { getPinnedIds, togglePinnedId } from '../services/sessions';
+import { AnimatedTitle } from './AnimatedTitle';
 
 // Sidebar — Sessions + Pinned section + footer indicator. Pinned
 // sessions are stored in localStorage and displayed in a separate
@@ -144,7 +145,7 @@ function SessionRow({ session, active, pinned, onSelect, onRename, onDelete, onT
       }}
       title="Double-click to rename · right-click to delete"
     >
-      <div class="t">{session.title}</div>
+      <div class="t"><AnimatedTitle text={session.title} /></div>
       <div class="s">
         {sources} · {rel}
       </div>

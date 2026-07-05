@@ -7,6 +7,7 @@ import type { Conversation, Message } from '../services/sessions';
 import type { ServerStatus } from '../services/status';
 import { formatContextSize } from '../services/status';
 import type { ToolCallRecord } from '../types';
+import { AnimatedTitle } from '../components/AnimatedTitle';
 
 // Chat — presentational route. Owns no state; the parent (<App>)
 // holds sessions, messages, and the streaming turn, and passes them
@@ -165,7 +166,11 @@ export function Chat({ activeSession, loading, messages, pending, onSubmit, stat
       <div class="toolbar">
         <div class="crumb">
           Session <i>/</i>{' '}
-          <b>{activeSession?.title ?? (loading ? 'loading…' : 'No session')}</b>
+          <b>
+            {activeSession?.title != null
+              ? <AnimatedTitle text={activeSession.title} />
+              : (loading ? 'loading…' : 'No session')}
+          </b>
         </div>
         <div class="model" aria-live="polite">
           <span class="sw" />

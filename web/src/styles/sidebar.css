@@ -90,6 +90,15 @@
   padding-right: 30px;
 }
 
+/* AnimatedTitle — Matrix-style scramble on title change. During the
+   animation the text is shown in the accent (red) color instead of
+   the element's normal color. The class is removed when the animation
+   completes. */
+.session .t .animating-title,
+.toolbar .crumb b .animating-title {
+  color: var(--accent);
+}
+
 .session .s {
   font-size: 11px;
   color: var(--muted);
