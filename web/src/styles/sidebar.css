@@ -114,8 +114,11 @@
 
 /* Per-row delete button — Phase 03 / post-p3 small follow-up.
  * Visible on row hover (desktop) and always on touch devices
- * (where there's no hover state). The `confirm()` dialog backs
- * the destructive action — same UX as the right-click path. */
+ * (where there's no hover state). Clicking × swaps this slot for
+ * the inline .del-confirm two-button confirm (Cancel / Delete),
+ * which sidesteps window.confirm() being blocked by some browsers.
+ * Esc / mousedown-outside / row-body click dismiss; Enter confirms.
+ * See SessionRow.tsx for the wiring. */
 .session .x-del {
   position: absolute;
   top: 6px;
@@ -148,6 +151,65 @@
 
 .session .x-del:focus-visible {
   opacity: 1;
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Inline delete-confirm — replaces the .x-del slot when armed.
+ * Two compact buttons sit side-by-side in the same top-right slot
+ * the × button occupied; the title's padding-right widens via
+ * .session.armed so the title text doesn't overlap. */
+.session.armed .t {
+  padding-right: 120px;
+}
+
+.session.armed {
+  background: var(--surface-2);
+}
+
+.session .del-confirm {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 4px;
+}
+
+.session .del-confirm button {
+  appearance: none;
+  height: 22px;
+  padding: 0 8px;
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--muted);
+  transition: 0.15s;
+}
+
+.session .del-confirm .del-no:hover {
+  border-color: var(--muted);
+  color: var(--fg);
+}
+
+.session .del-confirm .del-yes {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-2);
+  font-weight: 500;
+}
+
+.session .del-confirm .del-yes:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.session .del-confirm button:focus-visible {
   outline: 1px solid var(--accent);
   outline-offset: 1px;
 }

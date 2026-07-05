@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import type { Conversation } from '../services/sessions';
 import { getPinnedIds, togglePinnedId } from '../services/sessions';
 import { AnimatedTitle } from './AnimatedTitle';
@@ -125,44 +125,86 @@ function SessionRow({ session, active, pinned, onSelect, onRename, onDelete, onT
   const rel = relativeTime(session.updatedAt);
   const sources = session.messageCount > 0 ? `${session.messageCount} msgs` : 'empty';
 
-  // The × button is the discoverable delete surface; right-click is
-  // still wired for desktop power-users. The button sits in the
-  // top-right of the row, hidden on hover for desktop and always
-  // visible on touch (where hover doesn't exist). The pin button
-  // sits in the bottom-right of the row.
+  // Inline delete-confirm — clicking × (or right-clicking) arms the
+  // row in place; Cancel/Delete buttons take the slot where × sat.
+  // Esc / mousedown outside / row-body click dismiss; Enter confirms.
+  // ponytail: replaces window.confirm(), which some browsers block.
+  const [armed, setArmed] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!armed) return;
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setArmed(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') { setArmed(false); e.preventDefault(); }
+      if (e.key === 'Enter' && armed) onDelete?.(session.id);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [armed, session.id]);
+
+  // Park focus on Cancel when the confirm appears so keyboard users
+  // land on the safer default and can Enter to confirm in one tap.
+  useEffect(() => {
+    if (armed) cancelRef.current?.focus();
+  }, [armed]);
+
   return (
     <div
-      class={`session${active ? ' active' : ''}${pinned ? ' pinned' : ''}`}
-      onClick={() => onSelect(session.id)}
-      onDoubleClick={() => onRename?.(session.id, session.title)}
+      ref={ref}
+      class={`session${active ? ' active' : ''}${pinned ? ' pinned' : ''}${armed ? ' armed' : ''}`}
+      onClick={() => {
+        if (armed) { setArmed(false); return; }
+        onSelect(session.id);
+      }}
+      onDblClick={() => onRename?.(session.id, session.title)}
       onContextMenu={(e) => {
         if (onDelete) {
           e.preventDefault();
-          if (confirm(`Delete "${session.title}" and its messages?`)) {
-            onDelete(session.id);
-          }
+          setArmed(true);
         }
       }}
-      title="Double-click to rename · right-click to delete"
+      title={armed ? 'Delete? Enter to confirm, Esc to cancel' : 'Double-click to rename · click × to delete'}
     >
       <div class="t"><AnimatedTitle text={session.title} /></div>
       <div class="s">
         {sources} · {rel}
       </div>
-      {onDelete && (
+      {onDelete && !armed && (
         <button
           class="x-del"
           aria-label={`Delete session ${session.title}`}
           title="Delete session"
-          onClick={(e) => {
-            e.stopPropagation();
-            if (confirm(`Delete "${session.title}" and its messages?`)) {
-              onDelete(session.id);
-            }
-          }}
+          onClick={(e) => { e.stopPropagation(); setArmed(true); }}
         >
           ×
         </button>
+      )}
+      {onDelete && armed && (
+        <div class="del-confirm" role="group" aria-label="Confirm delete session">
+          <button
+            ref={cancelRef}
+            class="del-no"
+            aria-label="Cancel delete"
+            onClick={(e) => { e.stopPropagation(); setArmed(false); }}
+          >
+            Cancel
+          </button>
+          <button
+            class="del-yes"
+            aria-label={`Confirm delete ${session.title}`}
+            onClick={(e) => { e.stopPropagation(); onDelete?.(session.id); }}
+          >
+            Delete
+          </button>
+        </div>
       )}
       <button
         class={`pin-btn${pinned ? ' pinned' : ''}`}
