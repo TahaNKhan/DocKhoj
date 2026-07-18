@@ -640,9 +640,11 @@ describe('/api/auth/oidc/* routes', () => {
       // Identity row inserted, pointing at the password user.
       const linked = identities.findUserIdByIssuerSub(ISSUER, 'user-sub-1');
       expect(linked).toBe(user.id);
-      // findByUserId sees the row.
+      // findByUserId sees the row. toMatchObject because the merged
+      // signature (p7-T03) also returns createdAt; we only care that
+      // the right (issuer, sub) landed for this user.
       expect(identities.findByUserId(user.id)).toEqual([
-        { issuer: ISSUER, sub: 'user-sub-1' },
+        expect.objectContaining({ issuer: ISSUER, sub: 'user-sub-1' }),
       ]);
       // State cookie cleared.
       const setCookie = String(res.headers['set-cookie'] ?? '');
@@ -724,8 +726,10 @@ describe('/api/auth/oidc/* routes', () => {
       expect(res.statusCode).toBe(302);
       expect(res.headers.location).toBe('/login?oidc_error=link_already');
       // Only the pre-existing row; nothing new inserted.
+      // toMatchObject: createdAt is in the merged shape (p7-T03) but
+      // not what this assertion cares about.
       expect(identities.findByUserId(user.id)).toEqual([
-        { issuer: ISSUER, sub: 'some-other-sub' },
+        expect.objectContaining({ issuer: ISSUER, sub: 'some-other-sub' }),
       ]);
     });
 

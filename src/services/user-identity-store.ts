@@ -28,15 +28,23 @@ export class UserIdentityStore {
     return row?.user_id ?? null;
   }
 
-  /** Returns every identity row linked to a local user. p7-T02: used by
-   *  the OIDC callback's link-mode branch to short-circuit a re-link
-   *  attempt (`?oidc_error=link_already`). Empty array means the user
-   *  has no SSO identity yet and the link may proceed. */
-  findByUserId(userId: string): { issuer: string; sub: string }[] {
+  /** Phase 07 — list every identity row linked to a local user. Drives
+   *  the /account/link/status read (password.set vs oidc.linked +
+   *  linkedAt) and the "already linked" short-circuits in both the
+   *  /account/link/sso/start 409 and the OIDC callback's link-mode
+   *  branch (`?oidc_error=link_already`). Design says at most one IdP
+   *  per install, but returning the array keeps the contract honest if
+   *  that assumption ever changes. */
+  findByUserId(userId: string): Array<{ issuer: string; sub: string; createdAt: string }> {
     const rows = this.db
-      .prepare(`SELECT issuer, sub FROM user_identities WHERE user_id = ?`)
-      .all(userId) as { issuer: string; sub: string }[];
-    return rows;
+      .prepare(
+        `SELECT issuer, sub, created_at
+         FROM user_identities
+         WHERE user_id = ?
+         ORDER BY created_at ASC`,
+      )
+      .all(userId) as Array<{ issuer: string; sub: string; created_at: string }>;
+    return rows.map((r) => ({ issuer: r.issuer, sub: r.sub, createdAt: r.created_at }));
   }
 
   /** Records that (issuer, sub) maps to the given local user. First
@@ -51,5 +59,17 @@ export class UserIdentityStore {
          VALUES (?, ?, ?, ?)`,
       )
       .run(id, userId, issuer, sub);
+  }
+
+  /** Phase 07 / p7-T03 — delete every identity row for a user. Used by
+   *  /account/link/sso/unlink to unbind SSO. Caller wraps in a
+   *  transaction so the delete + any side-effect (e.g. session revoke
+   *  in a later task) lands atomically. Returns the number of rows
+   *  actually deleted (0 is a no-op success). */
+  unlinkAllForUser(userId: string): number {
+    const result = this.db
+      .prepare(`DELETE FROM user_identities WHERE user_id = ?`)
+      .run(userId);
+    return result.changes;
   }
 }
