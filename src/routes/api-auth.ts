@@ -10,6 +10,7 @@ import {
   clearSessionCookieHeader,
 } from '../services/cookies.js';
 import { log } from '../utils/logger.js';
+import { loadOidcConfig } from '../services/oidc.js';
 
 // p4-T06: /api/auth/* routes. Implements FR-1 (first-user-is-admin),
 // FR-4/5 (login), FR-6 (logout, idempotent), FR-7 (me), FR-13/14
@@ -126,10 +127,21 @@ export const authRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) =
   });
 
   // GET /api/auth/status — public. Tells the SPA whether to show the
-  // first-user registration form (FR-1 toggle) or hide it.
+  // first-user registration form (FR-1 toggle) or hide it. Phase 06
+  // // adds the `oidc` field so the SPA can render the SSO button
+  // without hardcoding config. `enabled` is false when the operator
+  // hasn't configured OIDC, so the existing password-flow UI is
+  // unchanged by default.
   fastify.get('/api/auth/status', async () => {
     const c = (db.prepare(`SELECT COUNT(*) AS c FROM users`).get() as { c: number }).c;
-    return { firstUserAvailable: c === 0 };
+    const cfg = loadOidcConfig();
+    return {
+      firstUserAvailable: c === 0,
+      oidc: {
+        enabled: cfg !== null,
+        providerName: cfg?.providerName ?? '',
+      },
+    };
   });
 
   // POST /api/auth/invite/accept — FR-13/14. Validates token, creates
