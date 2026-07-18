@@ -137,7 +137,7 @@ describe('authPlugin', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
-      user: { id: userId, username: 'alice', role: 'admin' },
+      user: { id: userId, username: 'alice', role: 'admin', linkedMethods: ['password'] },
     });
   });
 

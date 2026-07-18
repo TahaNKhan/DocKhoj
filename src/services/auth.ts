@@ -2,7 +2,9 @@ import type { FastifyInstance, FastifyPluginAsync, FastifyRequest } from 'fastif
 import type Database from 'better-sqlite3';
 import fp from 'fastify-plugin';
 import { AuthSessionStore } from './auth-session-store.js';
-import { UserStore } from './user-store.js';
+import { UserStore, OIDC_PASSWORD_SENTINEL } from './user-store.js';
+
+export type LinkedMethod = 'password' | 'oidc';
 
 // p4-T05: session lookup middleware.
 //
@@ -25,7 +27,7 @@ import { UserStore } from './user-store.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
-    user?: { id: string; username: string; role: 'admin' | 'user' };
+    user?: { id: string; username: string; role: 'admin' | 'user'; linkedMethods: LinkedMethod[] };
   }
 }
 
@@ -57,6 +59,14 @@ export const authPlugin: FastifyPluginAsync = fp(async (fastify: FastifyInstance
   const db = (fastify as unknown as { db: Database.Database }).db;
   const sessions = new AuthSessionStore(db);
   const users = new UserStore(db);
+  // p7-T04: one indexed SELECT to know whether this user has any OIDC
+  // identity row. Prepared once at plugin boot, reused on every request.
+  // why: instantiating a UserIdentityStore just for this boolean would
+  // cross a module boundary for one query; the prepared statement is the
+  // smaller diff and matches the "index-lookup on user_id" shape.
+  const hasIdentity = db.prepare(
+    `SELECT 1 AS x FROM user_identities WHERE user_id = ? LIMIT 1`,
+  );
 
   fastify.addHook('onRequest', async (request: FastifyRequest, reply) => {
     // Always attempt to populate request.user from the cookie if a
@@ -70,7 +80,18 @@ export const authPlugin: FastifyPluginAsync = fp(async (fastify: FastifyInstance
       if (session) {
         const user = users.findById(session.userId);
         if (user) {
-          request.user = { id: user.id, username: user.username, role: user.role };
+          // p7-T04: linkedMethods — additive field consumed by /me and
+          // (later) the account-linking UI. 'password' iff the hash
+          // isn't the OIDC sentinel; 'oidc' iff any identity row exists.
+          const linkedMethods: LinkedMethod[] = [];
+          if (user.passwordHash !== OIDC_PASSWORD_SENTINEL) linkedMethods.push('password');
+          if (hasIdentity.get(user.id) !== undefined) linkedMethods.push('oidc');
+          request.user = {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            linkedMethods,
+          };
           // Rolling-window refresh; fire-and-forget — a touch() failure
           // shouldn't take down the request.
           sessions.touch(sid);
