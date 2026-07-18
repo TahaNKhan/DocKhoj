@@ -346,6 +346,15 @@ export interface OidcState {
   next: string;
   /** Epoch ms — the cookie is rejected after this. */
   exp: number;
+  /**
+   * Phase 07 — what the callback should do with this identity. Absent
+   * (Phase 06 cookies) is treated as `'login'`. `'link'` binds the
+   * IdP identity to an already-authenticated password user instead of
+   * running find-or-create.
+   */
+  mode?: 'login' | 'link';
+  /** Present iff `mode === 'link'`. The local user the identity binds to. */
+  linkUserId?: string;
 }
 
 const STATE_TTL_MS = 5 * 60 * 1000;
@@ -412,7 +421,18 @@ export function verifyState(cookie: string, clientSecret: string): OidcState | n
     return null;
   }
   if (parsed.exp <= Date.now()) return null;
-  return parsed;
+
+  // Phase 07 — coerce the new optional fields. An absent `mode` (Phase 06
+  // cookies) decodes as `'login'` so old cookies keep working. `link`
+  // requires a non-empty `linkUserId` or the cookie is malformed.
+  const mode: 'login' | 'link' = parsed.mode === 'link' ? 'link' : 'login';
+  const linkUserId =
+    typeof parsed.linkUserId === 'string' && parsed.linkUserId.length > 0
+      ? parsed.linkUserId
+      : undefined;
+  if (mode === 'link' && !linkUserId) return null;
+
+  return { ...parsed, mode, linkUserId };
 }
 
 /**
@@ -435,14 +455,54 @@ function pkceS256(verifier: string): string {
   return createHash('sha256').update(verifier).digest('base64url');
 }
 
-/** Helper for /login: build a fresh state object with all four fields. */
-export function newLoginState(next: string): { state: string; nonce: string; verifier: string; challenge: string; stateObj: OidcState } {
+/**
+ * Helper for /login (and /account/link/sso/start): build a fresh state
+ * object with state/nonce/verifier/challenge.
+ *
+ * ponytail: one helper, optional 2nd arg, rather than a parallel
+ * `newLinkState`. The 1-arg call shape is unchanged from Phase 06;
+ * passing `link` embeds `mode: 'link'` + `linkUserId` so the callback
+ * binds the IdP identity to the already-authenticated password user.
+ */
+export function newLoginState(
+  next: string,
+  link?: { mode: 'link'; linkUserId: string },
+): { state: string; nonce: string; verifier: string; challenge: string; stateObj: OidcState } {
   const state = randomBase64Url(32);
   const nonce = randomBase64Url(32);
   const verifier = randomBase64Url(32);
   const challenge = pkceS256(verifier);
-  const stateObj: OidcState = { state, nonce, verifier, next, exp: Date.now() + STATE_TTL_MS };
+  const base = { state, nonce, verifier, next, exp: Date.now() + STATE_TTL_MS };
+  const stateObj: OidcState = link
+    ? { ...base, mode: 'link', linkUserId: link.linkUserId }
+    : base;
   return { state, nonce, verifier, challenge, stateObj };
+}
+
+/**
+ * Build the IdP `/authorize` URL with PKCE + state + nonce. Phase 07
+ * lifts this out of the callback route so the new `/account/link/sso/start`
+ * route reuses it; Phase 06 had one caller (the inline build didn't justify
+ * the abstraction then). Pure function over `cfg` + the freshly-generated
+ * values from `newLoginState`.
+ */
+export async function buildAuthorizeUrl(
+  cfg: OidcConfig,
+  state: string,
+  nonce: string,
+  challenge: string,
+): Promise<string> {
+  const discovery = await getDiscovery(cfg);
+  const url = new URL(discovery.authorization_endpoint);
+  url.searchParams.set('response_type', 'code');
+  url.searchParams.set('client_id', cfg.clientId);
+  url.searchParams.set('redirect_uri', cfg.redirectUri);
+  url.searchParams.set('scope', cfg.scopes);
+  url.searchParams.set('state', state);
+  url.searchParams.set('nonce', nonce);
+  url.searchParams.set('code_challenge', challenge);
+  url.searchParams.set('code_challenge_method', 'S256');
+  return url.toString();
 }
 
 // ── Token exchange ──────────────────────────────────────────────────────

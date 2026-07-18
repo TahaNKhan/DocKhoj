@@ -13,6 +13,7 @@ import {
   verifyState,
   signState,
   newLoginState,
+  buildAuthorizeUrl,
   exchangeCodeForToken,
   type OidcConfig,
 } from '../services/oidc.js';
@@ -191,7 +192,7 @@ export const oidcAuthRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
         return reply.status(503).send({ error: 'OIDC not configured' });
       }
       const next = validateNext(request.query.next);
-      const { state, nonce, verifier, challenge, stateObj } = newLoginState(next);
+      const { state, nonce, challenge, stateObj } = newLoginState(next);
 
       // Sign the state object (state, nonce, verifier, next, exp) and
       // set as a short-lived cookie. The cookie is the only thing
@@ -199,19 +200,10 @@ export const oidcAuthRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
       // carries 300s < typical IdP timeout.
       setOidcStateCookie(reply, signState(stateObj, cfg.clientSecret));
 
-      const discovery = await getDiscovery(cfg);
-      const authUrl = new URL(discovery.authorization_endpoint);
-      authUrl.searchParams.set('response_type', 'code');
-      authUrl.searchParams.set('client_id', cfg.clientId);
-      authUrl.searchParams.set('redirect_uri', cfg.redirectUri);
-      authUrl.searchParams.set('scope', cfg.scopes);
-      authUrl.searchParams.set('state', state);
-      authUrl.searchParams.set('nonce', nonce);
-      authUrl.searchParams.set('code_challenge', challenge);
-      authUrl.searchParams.set('code_challenge_method', 'S256');
+      const authUrl = await buildAuthorizeUrl(cfg, state, nonce, challenge);
 
       log.info({ event: 'oidc_login_started', issuer: cfg.issuer, next }, 'OIDC login started');
-      return reply.redirect(authUrl.toString());
+      return reply.redirect(authUrl);
     },
   );
 

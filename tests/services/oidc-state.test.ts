@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { signState, verifyState, type OidcState } from '../../src/services/oidc';
+import { signState, verifyState, newLoginState, type OidcState } from '../../src/services/oidc';
 
 // Phase 06 / p6-T05 — HMAC state cookie (sign/verify round-trip + tamper/expiry/malformed).
 
@@ -19,7 +19,9 @@ describe('signState + verifyState', () => {
     const s = sampleState();
     const cookie = signState(s, SECRET);
     const parsed = verifyState(cookie, SECRET);
-    expect(parsed).toEqual(s);
+    // Phase 07: verifyState normalizes `mode` onto the return (login
+    // when absent), so the round-trip gains that one field.
+    expect(parsed).toEqual({ ...s, mode: 'login' });
   });
 
   it('rejects a tampered payload (sig no longer matches)', () => {
@@ -67,5 +69,62 @@ describe('signState + verifyState', () => {
     const s = { state: 'x', nonce: 'n', verifier: 'v', exp: Date.now() + 60_000 } as unknown as OidcState;
     const cookie = signState(s, SECRET);
     expect(verifyState(cookie, SECRET)).toBeNull();
+  });
+});
+
+// Phase 07 / p7-T01 — mode + linkUserId extension. Absent mode (Phase 06
+// cookies) decodes as 'login'; 'link' requires a linkUserId.
+describe('mode + linkUserId (Phase 07)', () => {
+  it('decodes a Phase 06 cookie (no mode) as mode=login', () => {
+    const cookie = signState(sampleState(), SECRET);
+    const parsed = verifyState(cookie, SECRET);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.mode).toBe('login');
+    expect(parsed!.linkUserId).toBeUndefined();
+  });
+
+  it('round-trips a link-mode state with mode + linkUserId', () => {
+    const s: OidcState = { ...sampleState(), mode: 'link', linkUserId: 'user-abc' };
+    const cookie = signState(s, SECRET);
+    const parsed = verifyState(cookie, SECRET);
+    expect(parsed).toEqual({ ...s, mode: 'link', linkUserId: 'user-abc' });
+  });
+
+  it('rejects a link-mode state with no linkUserId', () => {
+    const s = { ...sampleState(), mode: 'link' } as OidcState;
+    const cookie = signState(s, SECRET);
+    expect(verifyState(cookie, SECRET)).toBeNull();
+  });
+
+  it('rejects a link-mode state with an empty linkUserId', () => {
+    const s = { ...sampleState(), mode: 'link', linkUserId: '' } as OidcState;
+    const cookie = signState(s, SECRET);
+    expect(verifyState(cookie, SECRET)).toBeNull();
+  });
+
+  it('coerces an unknown mode value to login', () => {
+    const s = { ...sampleState(), mode: 'weird' } as OidcState;
+    const cookie = signState(s, SECRET);
+    const parsed = verifyState(cookie, SECRET);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.mode).toBe('login');
+  });
+
+  it('newLoginState(next) produces a login-mode stateObj', () => {
+    const { stateObj } = newLoginState('/chat');
+    expect(stateObj.mode).toBeUndefined();
+    const cookie = signState(stateObj, SECRET);
+    const parsed = verifyState(cookie, SECRET);
+    expect(parsed!.mode).toBe('login');
+  });
+
+  it('newLoginState(next, { mode, linkUserId }) produces a link-mode stateObj', () => {
+    const { stateObj } = newLoginState('/account', { mode: 'link', linkUserId: 'user-xyz' });
+    expect(stateObj.mode).toBe('link');
+    expect(stateObj.linkUserId).toBe('user-xyz');
+    const cookie = signState(stateObj, SECRET);
+    const parsed = verifyState(cookie, SECRET);
+    expect(parsed!.mode).toBe('link');
+    expect(parsed!.linkUserId).toBe('user-xyz');
   });
 });
