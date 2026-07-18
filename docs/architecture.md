@@ -43,6 +43,7 @@ flowchart LR
   subgraph "External"
     LLM["OpenAI-compatible LLM<br/>(chat + titles)"]
     OLLAMA["Ollama<br/>(nomic-embed-text)"]
+    OIDC["OIDC IdP<br/>(Keycloak/Authelia/<br/>Okta/Dex/…)"]
   end
 
   SPA <-->|"SSE stream + JSON<br/>dockhoj_sid cookie"| ROUTES
@@ -54,6 +55,7 @@ flowchart LR
   SERVICES --> DISK
   SERVICES -->|"chat + tools"| LLM
   SERVICES -->|"embeddings"| OLLAMA
+  ROUTES -.->|"302 + JWKS<br/>(disabled by default)"| OIDC
 ```
 
 Three boundaries matter: the **trust boundary** (the SPA is untrusted;
@@ -343,6 +345,109 @@ migrations are idempotent (per-point `if (!(field in payload))` gate
 
 ---
 
+## OIDC login (Phase 06) — additive SSO
+
+A single OIDC provider per install (Keycloak, Authelia, Authentik,
+Okta, Dex, …). **Disabled by default** — the password flow from Phase
+04 keeps working unchanged. Wire it up via `npm run setup-oidc` (the
+script prompts for the discovery URL + client id/secret, validates the
+IdP metadata, and writes `OIDC_*` keys into `.env` additively). On
+restart, `/login` grows a "Sign in with &lt;Provider&gt;" button.
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant S as Fastify /api/auth/oidc/*
+    participant IdP as OIDC Provider
+    participant DB as SQLite
+    U->>S: GET /api/auth/oidc/login?next=/chat
+    S->>S: PKCE verifier+challenge, state, nonce
+    S->>S: sign state → dockhoj_oidc cookie (5 min)
+    S-->>U: 302 → IdP /authorize (+ PKCE params)
+    U->>IdP: authenticate
+    IdP-->>U: 302 → /api/auth/oidc/callback?code=&state=
+    U->>S: GET callback (dockhoj_oidc cookie)
+    S->>S: verify HMAC + exp; check state == query
+    S->>IdP: POST /token (code + code_verifier + client_secret)
+    IdP-->>S: { id_token, access_token? }
+    S->>IdP: GET /jwks_uri (LocalJWKSet, in-memory cache)
+    S->>S: jose.jwtVerify: sig/iss/aud/exp/nonce
+    S->>S: extractGroups; allowedGroup check
+    alt not in allowed group
+        S-->>U: 302 /login?oidc_error=denied (no user)
+    else allowed
+        S->>DB: find user_identities(issuer, sub)
+        alt not found
+            S->>DB: createOidcUser (sentinel hash) + link
+        end
+        S->>DB: updateRoleIfChanged (recompute from adminGroup)
+        S->>DB: insert auth_sessions row
+        S-->>U: Set-Cookie dockhoj_sid + 302 → next
+    end
+```
+
+Cross-cutting decisions worth recording here (the per-decision
+rationale lives as `// why:` comments in `src/services/oidc.ts` and
+`src/routes/api-auth-oidc.ts`):
+
+- **Sentinel password hash.** `users.password_hash` is `NOT NULL`
+  (Phase 04). SQLite can't drop `NOT NULL` without a table rebuild
+  against a live `users` table. OIDC-provisioned users store
+  `'!oidc!'`; `verifyPassword` rejects it pre-compare because the
+  value isn't in the `scrypt$…` format. OIDC users structurally
+  cannot password-login by construction — no special-case branch
+  needed. The `user_identities` row is the authoritative link; the
+  sentinel just means "no password".
+
+- **Find-or-create by `(issuer, sub)`, not by username.** Username
+  changes (operator rename, IdP-side `preferred_username` change)
+  must not orphan the local user. The `user_identities` table maps
+  `(issuer, sub) → user_id` with a UNIQUE index; the route handler
+  `SELECT`s first, `INSERT`s user + identity only on miss. Race
+  between two concurrent callbacks for the same `(issuer, sub)`
+  surfaces as a `SQLITE_CONSTRAINT_UNIQUE` on the second `link()`
+  — caught and re-`SELECT`ed, mirroring Phase 04's invite race
+  handling.
+
+- **Stateless state cookie, not a server-side table.** State
+  (CSRF) + nonce + PKCE verifier + validated `next` are signed
+  into `dockhoj_oidc` with `HMAC-SHA256(OIDC_CLIENT_SECRET)`,
+  5-minute TTL. No DB sweep, survives restart. The HMAC key is
+  derived from the operator's existing client secret, so rotating
+  it invalidates in-flight logins (acceptable — retry). Cleared on
+  successful callback (single-use).
+
+- **JWKS as a `LocalJWKSet`, not jose's `RemoteJWKSet`.** jose v5's
+  `createRemoteJWKSet` uses `globalThis.fetch` internally and
+  ignores a custom fetch option, so tests can't mock the network
+  boundary there. The route hand-fetches the JWKS doc via our
+  injectable `_fetch` seam (the only network surface in `oidc.ts`)
+  and hands jose a `createLocalJWKSet`. Trade-off: we lose jose's
+  per-kid cooldown cache; for our scale (one verification per
+  login) that's free.
+
+- **PKCE S256, always.** Even though we have a client secret,
+  PKCE defends against intercepted authorization codes — and the
+  spec is increasingly mandating it. `S256` over `plain` is the
+  non-negotiable default; the verifier never leaves the server.
+
+- **Open-redirect guard on `next`.** Coerces any non-same-origin
+  target (protocol-relative `//evil.com`, absolute
+  `https://evil.com`, control chars, length > 256) to `/chat`.
+  Lives in the route handler, not the auth-plugin — the OIDC
+  callback is the only place that consumes a user-controlled
+  redirect target.
+
+- **Disabled-default behavior.** When `OIDC_ENABLED` is unset/false
+  (the default), `loadOidcConfig()` returns `null` and the routes
+  degrade gracefully: `/login` returns 503 JSON, `/callback`
+  redirects to `/login?oidc_error=config`. The SPA reads the
+  `oidc: { enabled, providerName }` field from `/api/auth/status`
+  and hides the SSO button when disabled. Existing password logins
+  are unaffected.
+
+---
+
 ## Phase history
 
 The per-phase spec folders were folded into this document when each
@@ -357,6 +462,7 @@ history. Phases in order:
 | 03 | Document deletion (Qdrant → disk → SQLite ordered pipeline); agentic RAG loop with 4 retrieval tools, bounded iterations + incremental token cap; `documents` table + `tool_calls` column; `expand=auto` becomes default. | `p3-T01…T16` |
 | 04 | Multi-user accounts (cookie sessions, scrypt, first-user-admin, invite signup); `users`/`auth_sessions`/`invites` tables; per-document + per-chunk `ownerId`/`visibility`; visibility filter on every Qdrant path; 404-for-foreign privacy; admin routes. | `p4-T01…T21` |
 | 05 | Hybrid search: `searchText` payload field + Qdrant full-text `text` index + backfill migration; `searchChunks` rewrite to Qdrant-native RRF over dense + lexical prefetches; visibility filter centralized at the fused top-level. | `p5-T01…T03` |
+| 06 | Additive OIDC SSO (any compliant IdP): `/api/auth/oidc/{login,callback}`, `user_identities` find-or-create by `(issuer, sub)`, sentinel password hash for OIDC-provisioned users, stateless HMAC-signed state cookie, JWT verification via `jose`, `npm run setup-oidc` interactive IdP wiring, SPA SSO button + `?oidc_error` mapping. Disabled by default; password flow unchanged. | `p6-T01…T13` |
 
 The currently-active phase, if any, owns its own `TASKS.md` inside a
 fresh `docs/specs/phase-NN-name/` folder (per-phase, not centralized).
