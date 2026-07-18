@@ -14,6 +14,7 @@ import { statusRoutes } from './routes/api-status.js';
 import { documentRoutes } from './routes/api-documents.js';
 import { authRoutes } from './routes/api-auth.js';
 import { oidcAuthRoutes } from './routes/api-auth-oidc.js';
+import { accountRoutes } from './routes/api-account.js';
 import { adminRoutes } from './routes/api-admin.js';
 import { initCollection, migratePayloads, migrateSearchTextPayloads } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
@@ -112,6 +113,12 @@ export async function buildApp() {
   // Phase 06 / p6-T06 — /api/auth/oidc/{login,callback}. Additive SSO path.
   // Same /api/auth/* exemption as authRoutes above.
   await fastify.register(oidcAuthRoutes);
+
+  // Phase 07 / p7-T03 — /api/account/link/{status,sso/start,sso/unlink}.
+  // Account management for an already-authenticated user. NOT under
+  // /api/auth/* so the auth middleware gates these routes (request.user
+  // is populated for every handler).
+  await fastify.register(accountRoutes);
 
   // Phase 04 / p4-T07 — /api/admin/{invites, users, password}.
   // Each handler re-checks request.user.role === 'admin'; the

@@ -41,4 +41,33 @@ export class UserIdentityStore {
       )
       .run(id, userId, issuer, sub);
   }
+
+  /** Phase 07 / p7-T03 — list every identity row linked to a local user.
+   *  Drives the /account/link/status read (password.set vs oidc.linked)
+   *  and the "already linked" 409 in /account/link/sso/start. Design
+   *  says at most one IdP per install, but returning the array keeps
+   *  the contract honest if that assumption ever changes. */
+  findByUserId(userId: string): Array<{ issuer: string; sub: string; createdAt: string }> {
+    const rows = this.db
+      .prepare(
+        `SELECT issuer, sub, created_at
+         FROM user_identities
+         WHERE user_id = ?
+         ORDER BY created_at ASC`,
+      )
+      .all(userId) as Array<{ issuer: string; sub: string; created_at: string }>;
+    return rows.map((r) => ({ issuer: r.issuer, sub: r.sub, createdAt: r.created_at }));
+  }
+
+  /** Phase 07 / p7-T03 — delete every identity row for a user. Used by
+   *  /account/link/sso/unlink to unbind SSO. Caller wraps in a
+   *  transaction so the delete + any side-effect (e.g. session revoke
+   *  in a later task) lands atomically. Returns the number of rows
+   *  actually deleted (0 is a no-op success). */
+  unlinkAllForUser(userId: string): number {
+    const result = this.db
+      .prepare(`DELETE FROM user_identities WHERE user_id = ?`)
+      .run(userId);
+    return result.changes;
+  }
 }

@@ -1,6 +1,11 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import type Database from 'better-sqlite3';
-import { setSessionCookieHeader } from '../services/cookies.js';
+import {
+  setSessionCookieHeader,
+  setOidcStateCookieHeader,
+  clearOidcStateCookieHeader,
+  OIDC_STATE_COOKIE,
+} from '../services/cookies.js';
 import {
   loadOidcConfig,
   getDiscovery,
@@ -34,10 +39,6 @@ type DB = Database.Database;
 // so the SPA can render a message (FR-17 / FR-20); the page-level 503 on
 // /login is the only JSON error (operator-misconfig case).
 
-const OIDC_STATE_COOKIE = 'dockhoj_oidc';
-const STATE_TTL_SECONDS = 5 * 60; // 5 min — matches the cookie's own exp claim.
-const SECURE_COOKIE = process.env.NODE_ENV === 'production';
-
 /**
  * Open-redirect guard for the `next` query parameter.
  *
@@ -61,25 +62,6 @@ function validateNext(next: string | undefined): string {
   // long paths in the Location header.
   if (next.length > 256) return '/chat';
   return next;
-}
-
-function setOidcStateCookie(reply: FastifyReply, value: string): void {
-  const parts = [
-    `${OIDC_STATE_COOKIE}=${value}`,
-    'HttpOnly',
-    'SameSite=Lax',
-    // ponytail: SameSite=Lax (not Strict) — the IdP's redirect back to
-    // /callback is a cross-site top-level GET, and Lax is what carries
-    // the cookie on that navigation. Strict would drop it.
-    'Path=/',
-    `Max-Age=${STATE_TTL_SECONDS}`,
-  ];
-  if (SECURE_COOKIE) parts.push('Secure');
-  reply.header('Set-Cookie', parts.join('; '));
-}
-
-function clearOidcStateCookie(reply: FastifyReply): void {
-  reply.header('Set-Cookie', `${OIDC_STATE_COOKIE}=; Path=/; Max-Age=0`);
 }
 
 /**
@@ -198,7 +180,7 @@ export const oidcAuthRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
       // set as a short-lived cookie. The cookie is the only thing
       // carrying verifier+nonce across the IdP redirect; the cookie
       // carries 300s < typical IdP timeout.
-      setOidcStateCookie(reply, signState(stateObj, cfg.clientSecret));
+      setOidcStateCookieHeader(reply, signState(stateObj, cfg.clientSecret));
 
       const authUrl = await buildAuthorizeUrl(cfg, state, nonce, challenge);
 
@@ -239,7 +221,7 @@ export const oidcAuthRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
 
       // State is valid — clear the cookie (single-use). Even on
       // subsequent failures below, the cookie is consumed.
-      clearOidcStateCookie(reply);
+      clearOidcStateCookieHeader(reply);
 
       // Token exchange.
       let tokens;
