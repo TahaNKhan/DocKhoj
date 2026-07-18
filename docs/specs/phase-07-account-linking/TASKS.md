@@ -49,7 +49,7 @@ carries link intent), FR-5 (mode field), FR-6 (linkUserId).
 
 **Estimate:** S.
 
-**Status:** todo.
+**Status:** done.
 
 **Notes:** The `buildAuthorizeUrl` extraction touches
 `api-auth-oidc.ts` (Phase 06 file). It is the only edit in T01 to a
@@ -103,7 +103,7 @@ type and `verifyState`).
 
 **Estimate:** M.
 
-**Status:** todo.
+**Status:** done.
 
 ---
 
@@ -161,7 +161,7 @@ NFR-2 (password re-auth).
 
 **Estimate:** M.
 
-**Status:** todo.
+**Status:** done.
 
 ---
 
@@ -198,7 +198,7 @@ lookup on the indexed `user_id`). The `/me` handler reads it from
 
 **Estimate:** S.
 
-**Status:** todo.
+**Status:** done.
 
 ---
 
