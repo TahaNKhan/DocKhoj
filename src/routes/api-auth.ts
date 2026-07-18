@@ -4,6 +4,11 @@ import { UserStore, validateUsername } from '../services/user-store.js';
 import { AuthSessionStore } from '../services/auth-session-store.js';
 import { InviteStore } from '../services/invite-store.js';
 import { verifyPassword } from '../services/password.js';
+import {
+  COOKIE_NAME,
+  setSessionCookieHeader,
+  clearSessionCookieHeader,
+} from '../services/cookies.js';
 import { log } from '../utils/logger.js';
 
 // p4-T06: /api/auth/* routes. Implements FR-1 (first-user-is-admin),
@@ -13,34 +18,13 @@ import { log } from '../utils/logger.js';
 // `dockhoj_sid` cookie per NFR-2: HttpOnly, SameSite=Lax, Path=/,
 // Max-Age=2592000, Secure when NODE_ENV === 'production'.
 //
-// ponytail: the cookie attribute string is inline-repeated in 3 set
-// sites + 1 clear site (4 total — the YAGNI threshold). If a future
-// change tweaks the cookie attributes, do it in all four places; this
-// is intentional — the alternative is a helper that hides the
-// attributes behind a name, and the attributes are the security
-// contract — visible in the route is the safer default.
+// ponytail: cookie attribute string and COOKIE_NAME used to be inline
+// here (4 callers — login/register/logout/invite-accept). Phase-06
+// adds OIDC as the 5th caller, crossing the YAGNI threshold — the
+// helpers now live in services/cookies.ts so the security contract
+// (the attribute set) is owned in one place.
 
 type DB = Database.Database;
-
-const COOKIE_NAME = 'dockhoj_sid';
-const COOKIE_MAX_AGE = 2592000; // 30 days, per NFR-2.
-const SECURE_COOKIE = process.env.NODE_ENV === 'production';
-
-function setSessionCookieHeader(reply: import('fastify').FastifyReply, sessionId: string): void {
-  const parts = [
-    `${COOKIE_NAME}=${sessionId}`,
-    'HttpOnly',
-    'SameSite=Lax',
-    'Path=/',
-    `Max-Age=${COOKIE_MAX_AGE}`,
-  ];
-  if (SECURE_COOKIE) parts.push('Secure');
-  reply.header('Set-Cookie', parts.join('; '));
-}
-
-function clearSessionCookieHeader(reply: import('fastify').FastifyReply): void {
-  reply.header('Set-Cookie', `${COOKIE_NAME}=; Path=/; Max-Age=0`);
-}
 
 // FR-3: at least 12 chars + at least one non-alphanumeric character.
 function validatePassword(plain: unknown): plain is string {
