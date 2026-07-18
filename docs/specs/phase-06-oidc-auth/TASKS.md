@@ -302,8 +302,8 @@ burns down in parallel with the trivial SPA chain.
   same commit that implements it, per global CLAUDE.md §9.
 
 <!-- Status block — keep in sync with per-task checkboxes above. -->
-- T01 `[x]` · T02 `[ ]` · T03 `[x]` · T04 `[x]` · T05 `[ ]` · T06 `[ ]`
-- T07 `[ ]` · T08 `[ ]` · T09 `[ ]` · T11 `[x]` · T12 `[ ]` · T13 `[ ]` · T14 `[ ]`
+- T01 `[x]` · T02 `[x]` · T03 `[x]` · T04 `[x]` · T05 `[x]` · T06 `[x]`
+- T07 `[x]` · T08 `[ ]` · T09 `[ ]` · T11 `[x]` · T12 `[x]` · T13 `[x]` · T14 `[ ]`
 
 ## Gate log
 
@@ -311,3 +311,29 @@ burns down in parallel with the trivial SPA chain.
   579 passed / 7 skipped (+16 tests); the 21 web/happy-dom errors are a
   pre-existing worktree-bootstrap gap, present on main before phase-06.
   Worktrees cleaned up.
+
+- **Gate 1** (done 2026-07-18): T02 + T05 merged into main. Verification
+  surfaced six real bugs in T05's tests that the prior commit deferred
+  ("verification deferred to phase end per env constraint"): jose v5
+  doesn't export `randomState`/`randomNonce`/`randomPKCECodeVerifier`/
+  `calculatePKCECodeChallenge` (used by `newLoginState`), jose's
+  `createRemoteJWKSet` ignores a custom fetch (used by tests), and four
+  test-side bugs in the username / state / signature-tamper tests.
+  Fixed on the T05 branch as one commit (p6-T05: fix verify/username/
+  state test bugs); 40 OIDC tests now pass reliably across 10 runs.
+  72 OIDC + user-store tests on main.
+
+- **Gate 2** (done 2026-07-18): T06, T07, T12, T13 merged into main.
+  T06 is the meat — `/api/auth/oidc/login` + `/callback` with PKCE,
+  state-cookie, real JOSE id_token verification, group denial, find-
+  or-create, role recompute, open-redirect guard. 23 new tests in
+  `tests/routes/api-auth-oidc.test.ts`. T07 extended `/api/auth/status`
+  with the additive `oidc` field — required also updating two existing
+  assertions in `api-auth.test.ts` to use `objectContaining` (one
+  follow-up commit). T12 is the operator-facing `setup-oidc.ts` (398
+  lines; untested in CI, will be exercised via the manual acceptance
+  step in T14). T13 is the docs touch (.env.example + README). 651
+  passed / 7 skipped on main (+72 over Gate 1).
+  ./restart.sh + curl: OIDC routes registered; /login → 503 JSON when
+  OIDC off; /callback → 302 /login?oidc_error=config when OIDC off;
+  existing auth routes unchanged.

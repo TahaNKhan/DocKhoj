@@ -71,11 +71,27 @@ export async function acceptInvite(args: {
 }
 
 // GET /api/auth/status — public. The SPA's Register page uses this
-// to decide whether to render the form or hide it.
-export async function fetchAuthStatus(): Promise<{ firstUserAvailable: boolean }> {
+// to decide whether to render the form or hide it. The `oidc` field
+// (added in p6-T07) tells the Login page whether to render the SSO
+// button — see web/src/routes/Login.tsx.
+//
+// ponytail: `oidc` is optional in the shape so the SPA still works
+// against an older server that hasn't been upgraded. Older servers
+// predate phase-06 and don't return the field; we treat that as
+// `enabled: false` at the call site (Login.tsx) so the absence is a
+// graceful no-op, not a type error.
+export interface AuthStatusOidc {
+  enabled: boolean;
+  providerName: string;
+}
+export interface AuthStatus {
+  firstUserAvailable: boolean;
+  oidc?: AuthStatusOidc;
+}
+export async function fetchAuthStatus(): Promise<AuthStatus> {
   const res = await fetch('/api/auth/status');
   if (!res.ok) throw new Error(await readError(res));
-  return (await res.json()) as { firstUserAvailable: boolean };
+  return (await res.json()) as AuthStatus;
 }
 
 // p4-T19 — admin service calls. Kept inside auth.ts (one service

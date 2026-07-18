@@ -175,6 +175,75 @@
   box-shadow: none;
 }
 
+/* SSO button (p6-T09) — full-nav anchor styled like the password
+   submit, but secondary (outline + hover fill). Sits above the
+   password form when /status reports oidc.enabled; the "or"
+   divider separates the two paths. Reuses the existing tokens
+   (--surface, --border, --accent) so it inherits dark/light
+   themes automatically. */
+.auth-card .auth-sso {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--cream);
+  font-family: var(--f-body);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+  text-decoration: none;
+  cursor: pointer;
+  transition: 0.18s;
+}
+
+.auth-card .auth-sso:hover {
+  background: var(--surface);
+  border-color: var(--accent);
+  color: var(--accent);
+  transform: translateX(2px);
+}
+
+.auth-card .auth-sso-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 2px 8px rgba(226, 85, 64, 0.3);
+  flex-shrink: 0;
+}
+
+.auth-card .auth-sso-label {
+  flex: 1;
+  text-align: center;
+}
+
+.auth-card .auth-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: var(--muted);
+  font-family: var(--f-mono);
+  font-size: 10px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.auth-card .auth-or-line {
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.auth-card .auth-or-text {
+  flex-shrink: 0;
+}
+
 .auth-card .auth-foot {
   margin-top: 20px;
   text-align: center;
