@@ -4,6 +4,7 @@ import { migrate } from '../../src/db/migrate.js';
 import {
   UserStore,
   validateUsername,
+  OIDC_PASSWORD_SENTINEL,
   type UserRole,
 } from '../../src/services/user-store.js';
 import { verifyPassword } from '../../src/services/password.js';
@@ -207,6 +208,65 @@ describe('UserStore', () => {
       expect(after).not.toBe(before);
       expect(await verifyPassword('newpassword123!', after)).toBe(true);
       expect(await verifyPassword('correcthorse123!', after)).toBe(false);
+    });
+  });
+
+  // Phase 06 / p6-T02 — OIDC user provisioning helpers.
+  describe('OIDC provisioning (p6-T02)', () => {
+    it('createOidcUser inserts a row with the sentinel hash + given role', async () => {
+      const user = await store.createOidcUser({ username: 'alice', role: 'user' });
+      expect(user.username).toBe('alice');
+      expect(user.role).toBe('user');
+      expect(user.passwordHash).toBe(OIDC_PASSWORD_SENTINEL);
+    });
+
+    it('createOidcUser inserts with role=admin when specified', async () => {
+      const user = await store.createOidcUser({ username: 'admin-user', role: 'admin' });
+      expect(user.role).toBe('admin');
+      expect(user.passwordHash).toBe(OIDC_PASSWORD_SENTINEL);
+    });
+
+    it('regression: verifyPassword rejects the sentinel format (OIDC users cannot password-login)', async () => {
+      // The whole point of the sentinel — the scrypt$… format check fails
+      // before any comparison, so no input can match.
+      expect(await verifyPassword('any-plain-text', OIDC_PASSWORD_SENTINEL)).toBe(false);
+      expect(await verifyPassword('', OIDC_PASSWORD_SENTINEL)).toBe(false);
+    });
+
+    it('createOidcUser rejects an invalid username (same rule as createUser)', async () => {
+      await expect(
+        store.createOidcUser({ username: 'ab', role: 'user' }),
+      ).rejects.toThrow(/Invalid username/);
+    });
+
+    it('updateRoleIfChanged returns false when the role is unchanged (no-op write)', async () => {
+      const u = await store.createOidcUser({ username: 'alice', role: 'user' });
+      expect(store.updateRoleIfChanged(u.id, 'user')).toBe(false);
+      // Verify the row was not touched: re-read and confirm role stayed 'user'.
+      expect(store.findById(u.id)!.role).toBe('user');
+    });
+
+    it('updateRoleIfChanged returns true when the role changes, and persists the new role', async () => {
+      const u = await store.createOidcUser({ username: 'alice', role: 'user' });
+      expect(store.updateRoleIfChanged(u.id, 'admin')).toBe(true);
+      expect(store.findById(u.id)!.role).toBe('admin');
+      // And the same call is now a no-op (idempotent).
+      expect(store.updateRoleIfChanged(u.id, 'admin')).toBe(false);
+    });
+
+    it('updateRoleIfChanged returns false for an unknown id (does not throw)', () => {
+      expect(store.updateRoleIfChanged('does-not-exist', 'user')).toBe(false);
+    });
+
+    it('updateRoleIfChanged can promote and demote across logins', async () => {
+      // Simulates FR-9: role is recomputed on every OIDC login; adding
+      // or removing the user from the admin group at the IdP flips the
+      // local role at the next callback.
+      const u = await store.createOidcUser({ username: 'alice', role: 'user' });
+      store.updateRoleIfChanged(u.id, 'admin');
+      expect(store.findById(u.id)!.role).toBe('admin');
+      store.updateRoleIfChanged(u.id, 'user');
+      expect(store.findById(u.id)!.role).toBe('user');
     });
   });
 });
