@@ -41,7 +41,7 @@ describe('migrate', () => {
     expect(after).toHaveLength(1);
   });
 
-  it('applies all seven migrations and records the version set', () => {
+  it('applies all eight migrations and records the version set', () => {
     const result = migrate(db);
     expect(result.applied).toContain(1);
     expect(result.applied).toContain(2);
@@ -50,9 +50,10 @@ describe('migrate', () => {
     expect(result.applied).toContain(5);
     expect(result.applied).toContain(6);
     expect(result.applied).toContain(7);
+    expect(result.applied).toContain(8);
 
     const rows = db.prepare('SELECT id FROM _migrations ORDER BY id').all() as { id: number }[];
-    expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
 
     const conversations = db
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='conversations'")
@@ -83,6 +84,19 @@ describe('migrate', () => {
       .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='invites'")
       .all();
     expect(invites).toHaveLength(1);
+
+    // Phase 06 / p6-T01 — migration 008 adds the OIDC identity-link table.
+    const userIdentities = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='user_identities'")
+      .all();
+    expect(userIdentities).toHaveLength(1);
+    // The (issuer, sub) lookup path must be UNIQUE-indexed.
+    const issuerSubIdx = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_user_identities_issuer_sub'"
+      )
+      .all();
+    expect(issuerSubIdx).toHaveLength(1);
 
     const cols = db.prepare("PRAGMA table_info(conversations)").all() as { name: string }[];
     expect(cols.map((c) => c.name)).toContain('title_source');
