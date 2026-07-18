@@ -173,7 +173,9 @@ All routes under `/api/*` require authentication (see Auth below) **except** `/a
 | `POST` | `/api/auth/login` | Sets `dockhoj_sid` cookie |
 | `POST` | `/api/auth/logout` | Clears cookie + deletes server session row |
 | `GET` | `/api/auth/me` | Current user (or 401) |
-| `GET` | `/api/auth/status` | `{firstUserAvailable: bool}` |
+| `GET` | `/api/auth/status` | `{firstUserAvailable: bool, oidc: {enabled, providerName}}` |
+| `GET` | `/api/auth/oidc/login` | Start OIDC login (302 to IdP, PKCE S256) |
+| `GET` | `/api/auth/oidc/callback` | OIDC callback (code → id_token → session) |
 | `POST` | `/api/auth/invite/accept` | Redeem an invite token |
 | `POST` | `/api/admin/invites` | Create invite (admin) |
 | `GET` | `/api/admin/invites` | List outstanding invites (admin) |
@@ -208,7 +210,7 @@ DocKhoj is single-tenant and per-user.
 - **Cookie:** `dockhoj_sid` — HttpOnly, SameSite=Lax. Secure flag flips on with `NODE_ENV=production`.
 - **Sessions:** Server-side rows in SQLite; rolling 30-day expiry on every authenticated request; logout deletes the row.
 - **Passwords:** `crypto.scrypt` (Node stdlib, no native build). Format `scrypt$N$r$p$salt$derived` so a future argon2id swap is a single-file verify-path change. Minimum 12 chars + at least one non-alphanumeric.
-- **Visibility:** every Qdrant call carries `buildVisibilityFilter(request.user.id)`. Documents are scoped per `owner_id`; legacy pre-auth uploads have `owner_id = NULL` and are visible to every logged-in user (deleting a shared file is open to any logged-in user by design).
+- **OIDC single sign-on (additive):** run `npm run setup-oidc` to wire up any OIDC-compliant IdP (Keycloak, Authelia, Authentik, Okta, Dex, …). Access and admin group membership are mapped per-login from the IdP token; PKCE S256 + state + nonce + JWKS-verified id_token. Disabled by default; password login keeps working unchanged.
 
 > ⚠️ **Serve over HTTPS in production.** The cookie's `Secure` flag is `off` in development. Front the app with a reverse proxy that handles TLS (Caddy, nginx, Traefik) — DocKhoj does not terminate TLS itself.
 
@@ -228,6 +230,7 @@ DocKhoj is single-tenant and per-user.
 | `npm test` | All vitest projects |
 | `npm run coverage` | `vitest run --coverage`; thresholds fail the run |
 | `npm run reset-admin-account` | Reset a locked-out admin's username + password (DB-side, no auth bypass) |
+| `npm run setup-oidc` | Configure OIDC single sign-on: prompts for discovery URL + client id/secret, writes OIDC_* keys into `.env` additively |
 | `./restart.sh` | Default: rebuild + recreate only the `app` container |
 | `./restart.sh --full` | Tear everything down, rebuild from scratch with `--no-cache` |
 
