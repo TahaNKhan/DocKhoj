@@ -13,6 +13,7 @@ import { healthRoutes } from './routes/api-health.js';
 import { statusRoutes } from './routes/api-status.js';
 import { documentRoutes } from './routes/api-documents.js';
 import { authRoutes } from './routes/api-auth.js';
+import { oidcAuthRoutes } from './routes/api-auth-oidc.js';
 import { adminRoutes } from './routes/api-admin.js';
 import { initCollection, migratePayloads, migrateSearchTextPayloads } from './services/qdrant.js';
 import { isOllamaAvailable } from './services/embed.js';
@@ -107,6 +108,10 @@ export async function buildApp() {
   // The authPlugin (above) exempts /api/auth/* already, so these
   // handlers run without a session check.
   await fastify.register(authRoutes);
+
+  // Phase 06 / p6-T06 — /api/auth/oidc/{login,callback}. Additive SSO path.
+  // Same /api/auth/* exemption as authRoutes above.
+  await fastify.register(oidcAuthRoutes);
 
   // Phase 04 / p4-T07 — /api/admin/{invites, users, password}.
   // Each handler re-checks request.user.role === 'admin'; the

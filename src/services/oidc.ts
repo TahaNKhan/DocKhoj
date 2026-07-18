@@ -17,18 +17,13 @@
 // tokens, RSA keypair generated in-test). The IdP HTTP transport is the
 // only thing mocked — at the network boundary per project CLAUDE.md §2.
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import {
-  calculatePKCECodeChallenge,
-  createRemoteJWKSet,
+  createLocalJWKSet,
   jwtVerify,
-  randomNonce,
-  randomPKCECodeVerifier,
-  randomState,
-  type JWS_ALG,
   type JWTPayload,
   type KeyLike,
-  type RemoteJWKSet,
+  type JWSHeaderParameters,
 } from 'jose';
 import { log } from '../utils/logger.js';
 
@@ -134,7 +129,7 @@ interface CachedDiscovery {
 const DISCOVERY_TTL_MS = 60 * 60 * 1000; // 1h
 let discoveryCache: CachedDiscovery | null = null;
 
-const JWKS_CACHE = new Map<string, RemoteJWKSet>();
+const JWKS_CACHE = new Map<string, ReturnType<typeof import('jose').createLocalJWKSet>>();
 
 // ponytail: a module-level fetch seam so tests can inject a fake transport
 // without monkey-patching globalThis.fetch. The real `fetch` is the Node 20
@@ -174,14 +169,35 @@ export async function getDiscovery(cfg: OidcConfig): Promise<DiscoveryDoc> {
   return fetchDiscovery(cfg.discoveryUrl);
 }
 
-export function getJwks(discoveryUrl: string, jwksUri: string): RemoteJWKSet {
+export async function getJwks(discoveryUrl: string, jwksUri: string): Promise<ReturnType<typeof createLocalJWKSet>> {
   const cached = JWKS_CACHE.get(discoveryUrl);
   if (cached) return cached;
-  // jose handles key rotation: on unknown `kid`, it re-fetches jwks_uri.
-  // We pass our injectable fetch so tests can intercept it.
-  const jwks = createRemoteJWKSet(new URL(jwksUri), { fetch: _fetch as unknown as typeof globalThis.fetch });
-  JWKS_CACHE.set(discoveryUrl, jwks);
-  return jwks;
+  // ponytail: jose v5's createRemoteJWKSet doesn't honor a custom fetch
+  // option (it uses globalThis.fetch internally), so tests can't mock
+  // the network boundary there. We fetch the JWKS ourselves via the
+  // injectable `_fetch` seam and hand jose a LocalJWKSet — same
+  // signature-verify path, but no hidden network calls. Trade-off: we
+  // lose jose's per-kid cooldown cache, but the JWKS doc is small and
+  // infrequent (one verification per login), so a per-process in-memory
+  // cache is enough.
+  return fetchJwksLocal(discoveryUrl, jwksUri);
+}
+
+async function fetchJwksLocal(
+  discoveryUrl: string,
+  jwksUri: string,
+): Promise<ReturnType<typeof import('jose').createLocalJWKSet>> {
+  const res = await _fetch(jwksUri);
+  if (!res.ok) {
+    throw new Error(`OIDC JWKS fetch failed: HTTP ${res.status}`);
+  }
+  const doc = (await res.json()) as { keys: unknown[] };
+  if (!Array.isArray(doc.keys)) {
+    throw new Error('OIDC JWKS doc missing `keys` array');
+  }
+  const localJwks = createLocalJWKSet(doc as Parameters<typeof createLocalJWKSet>[0]);
+  JWKS_CACHE.set(discoveryUrl, localJwks);
+  return localJwks;
 }
 
 /** Test seam: forget every cached entry. */
@@ -192,7 +208,13 @@ export function resetCachesForTesting(): void {
 
 // ── id_token verification (FR-15 / NFR-3) ───────────────────────────────
 
-const ALLOWED_ALGS: JWS_ALG[] = [
+/**
+ * Algorithms we accept for id_token signatures. ponytail: literal union
+ * rather than a type alias because jose v5 doesn't export `JWS_ALG`
+ * (every algorithm is its own literal type). Pinned for alg-confusion
+ * defense (NFR-3) — never allow 'none'.
+ */
+const ALLOWED_ALGS: Array<JWSHeaderParameters['alg']> = [
   'RS256', 'RS384', 'RS512',
   'ES256', 'ES384', 'ES512',
   'EdDSA',
@@ -209,19 +231,24 @@ export interface VerifyOptions {
  * Verify an id_token's signature + claims + nonce.
  * Throws on any failure (the caller maps to `?oidc_error=token`).
  *
- * The fetch seam's `_fetch` is used by jose.createRemoteJWKSet internally
- * for kid-miss key refresh; in tests, swap it via setFetchForTesting() and
- * pass a local JWKS as the second arg (use createLocalJWKSet in the test).
+ * The `jwks` arg accepts either a LocalJWKSet (built once per process
+ * via `getJwks`, which fetches via our injectable `_fetch` so tests
+ * can mock the network boundary) or a single key for unit tests.
  */
 export async function verifyIdToken(
   token: string,
-  jwks: RemoteJWKSet | ReturnType<typeof import('jose').createLocalJWKSet> | KeyLike | Uint8Array,
+  jwks: ReturnType<typeof createLocalJWKSet> | KeyLike | Uint8Array,
   opts: VerifyOptions,
 ): Promise<JWTPayload> {
-  const { payload } = await jwtVerify(token, jwks as Parameters<typeof jwtVerify>[1], {
+  // ponytail: `as never` because jose's overload signatures disagree on
+  // what a "key resolver" looks like (one overload accepts a function,
+  // another wants the concrete key). At runtime the value is one of the
+  // types we declared in the parameter list; the cast is purely to
+  // satisfy the union-of-overloads inference.
+  const { payload } = await jwtVerify(token, jwks as never, {
     issuer: opts.issuer,
     audience: opts.audience,
-    algorithms: ALLOWED_ALGS,
+    algorithms: ALLOWED_ALGS as never,
     requiredClaims: ['iss', 'aud', 'exp', 'iat', 'sub'],
   });
   // jose does not enforce nonce (it's an app-specific transaction-binding
@@ -388,12 +415,77 @@ export function verifyState(cookie: string, clientSecret: string): OidcState | n
   return parsed;
 }
 
+/**
+ * ponytail: PKCE + state + nonce are all just URL-safe random bytes hashed
+ * once for the challenge. We use node:crypto (rung 3) rather than jose's
+ * PKCE helpers — jose v5 doesn't export `randomState`/`randomNonce`/
+ * `randomPKCECodeVerifier`/`calculatePKCECodeChallenge`, and a 1-line
+ * `randomBytes().toString('base64url')` covers both sides of the wire.
+ *
+ *   state    = 32 random bytes, base64url       (CSRF)
+ *   nonce    = 32 random bytes, base64url       (replay)
+ *   verifier = 32 random bytes, base64url       (PKCE; 43-128 chars per RFC 7636)
+ *   challenge = base64url(SHA-256(verifier))   (PKCE S256)
+ */
+function randomBase64Url(bytes: number): string {
+  return randomBytes(bytes).toString('base64url');
+}
+
+function pkceS256(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
+}
+
 /** Helper for /login: build a fresh state object with all four fields. */
 export function newLoginState(next: string): { state: string; nonce: string; verifier: string; challenge: string; stateObj: OidcState } {
-  const state = randomState();
-  const nonce = randomNonce();
-  const verifier = randomPKCECodeVerifier();
-  const challenge = calculatePKCECodeChallenge(verifier);
+  const state = randomBase64Url(32);
+  const nonce = randomBase64Url(32);
+  const verifier = randomBase64Url(32);
+  const challenge = pkceS256(verifier);
   const stateObj: OidcState = { state, nonce, verifier, next, exp: Date.now() + STATE_TTL_MS };
   return { state, nonce, verifier, challenge, stateObj };
+}
+
+// ── Token exchange ──────────────────────────────────────────────────────
+
+export interface TokenExchangeResult {
+  id_token: string;
+  access_token?: string;
+}
+
+/**
+ * Exchange an authorization code for tokens at the IdP's token endpoint.
+ *
+ * Supports both `client_secret_post` (secret in form body — default) and
+ * `client_secret_basic` (HTTP Basic — set via `OIDC_TOKEN_ENDPOINT_AUTH_METHOD`
+ * for IdPs that require it). Returns null on non-2xx; throws on network
+ * failure (caller catches and reports `?oidc_error=exchange`).
+ *
+ * Routes through the injectable `_fetch` seam so tests can mock only the
+ * network boundary. The wire format is the standard OIDC form-encoded body.
+ */
+export async function exchangeCodeForToken(
+  cfg: OidcConfig,
+  tokenEndpoint: string,
+  code: string,
+  verifier: string,
+): Promise<TokenExchangeResult | null> {
+  const body = new URLSearchParams({
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: cfg.redirectUri,
+    client_id: cfg.clientId,
+    code_verifier: verifier,
+  });
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/x-www-form-urlencoded',
+  };
+  if (cfg.tokenAuthMethod === 'client_secret_basic') {
+    headers.Authorization =
+      'Basic ' + Buffer.from(`${cfg.clientId}:${cfg.clientSecret}`).toString('base64');
+  } else {
+    body.set('client_secret', cfg.clientSecret);
+  }
+  const res = await _fetch(tokenEndpoint, { method: 'POST', headers, body });
+  if (!res.ok) return null;
+  return (await res.json()) as TokenExchangeResult;
 }
