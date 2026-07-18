@@ -96,9 +96,9 @@ Use `npm test -- --run` (or `npx vitest run tests/<file>.test.ts` for one file).
 
 This project follows the spec-workflow convention documented in §7 of the global CLAUDE.md:
 
-- Phase docs live under `docs/specs/phase-NN-name/`.
-- Phase 04 spec is the source of truth for in-flight work: `docs/specs/phase-04-user-accounts-and-private-knowledge/`.
-- `TASKS.md` at the project root is an **index** of per-phase task files; each phase owns its own `TASKS.md` inside its spec folder. Task IDs use the `pX-TYY` form (e.g. `p1-T07`, `p2-T18`, `p4-T05`); the prefix disambiguates phases.
+- The active phase's docs live under `docs/specs/phase-NN-name/` while it is in flight; the folder is deleted when the phase ships and its durable decisions fold into `docs/architecture.md`.
+- `docs/architecture.md` is the 30-second system model + the canonical "why" for cross-cutting decisions; per-decision rationale also lives as `// why:` comments at the call site.
+- Phases 01–05 are folded (no active phase right now). Task IDs use the `pX-TYY` form (e.g. `p1-T07`, `p2-T18`, `p4-T05`); the prefix disambiguates phases and survives in the git log.
 - Before implementing a non-trivial change, update `design.md` first, then code (per §3 of the global CLAUDE.md).
 
 ## Git workflow reminder

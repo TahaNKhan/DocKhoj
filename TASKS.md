@@ -1,23 +1,38 @@
 # TASKS
 
-Index of per-phase task lists. The root `TASKS.md` is **not** the active task tracker — each phase owns its own task file inside its spec folder, per the spec-workflow convention (see `~/.claude/CLAUDE.md` §6).
+Index of phase work. Each phase owns its own task list inside its spec
+folder (`docs/specs/phase-NN-name/TASKS.md`) while it is active; when
+the phase ships, the spec folder is deleted and the durable decisions
+fold into [`docs/architecture.md`](./docs/architecture.md).
 
-The currently-active phase (if any) is the only one with non-`done` tasks; all others are historical record.
+## Status
 
-## Per-phase task lists
+- **Phases 01–05 — folded.** Their spec folders (`docs/specs/phase-01…05/`)
+  have been removed; their cross-cutting decisions live in
+  `docs/architecture.md` and as `// why:` comments at the call sites.
+  The git log retains the per-phase commit history.
 
-- **Phase 01 — Smart Chunker & Cleanup** — [`docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md`](./docs/specs/phase-01-smart-chunker-and-cleanup/TASKS.md) — p1-T01 … p1-T21. **Done** (per spec README + git log `9bb6cf3` … `014a4f2`).
-- **Phase 02 — Frontend, Streaming, and Persistence** — [`docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md`](./docs/specs/phase-02-frontend-streaming-and-persistence/TASKS.md) — p2-T01 … p2-T26 (p2-T21 … p2-T26 are post-spec priority follow-ups). **Done** (per spec README + git log `2c81035` … `6425682`).
-- **Phase 03 — Document Deletion and Agentic RAG** — [`docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md`](./docs/specs/phase-03-document-deletion-and-agentic-rag/TASKS.md) — p3-T01 … p3-T11, plus post-ship UX + streaming follow-ups p3-T12 … p3-T16. **Done**.
-- **Phase 04 — User Accounts and Private Knowledge** — [`docs/specs/phase-04-user-accounts-and-private-knowledge/TASKS.md`](./docs/specs/phase-04-user-accounts-and-private-knowledge/TASKS.md) — p4-T01 … p4-T21. **In-progress** (spec + implementation both on `main`; per-step commits land on `main` with optional short-lived worktree isolation per `phase-swarm` skill).
-- **Phase 05 — Hybrid Search (Qdrant Full-Text + RRF)** — [`docs/specs/phase-05-hybrid-search-qdrant-fulltext-rrf/TASKS.md`](./docs/specs/phase-05-hybrid-search-qdrant-fulltext-rrf/TASKS.md) — p5-T01 … p5-T03. **In-progress** (spec + implementation land on `main`; small, contained, reversible per-task — no branch needed).
+- **Active phase:** none currently in flight. To start a new phase,
+  create `docs/specs/phase-NN-short-name/` per the `spec-workflow`
+  skill, with its own `README.md` / `requirements.md` / `design.md` /
+  `TASKS.md`.
 
 ## Numbering
 
-Task IDs use the `pX-TYY` form: `p1-TYY` for Phase 01, `p2-TYY` for Phase 02, `p3-TYY` for Phase 03. The leading `X` (1, 2, 3) disambiguates phases; within a phase the two-digit number is sequential. Historical references to the old `T<N>` form (where `N` was a global task number from the central `TASKS.md`) are preserved in a few places as `(T49 in legacy numbering)` for cross-reference with the Git log.
+Task IDs use the `pX-TYY` form: `p1-TYY` for Phase 01, `p2-TYY` for
+Phase 02, etc. The leading `X` disambiguates phases; within a phase
+the two-digit number is sequential. Historical references to the old
+global `T<N>` form are preserved in a few places as
+`(T49 in legacy numbering)` for cross-reference with the git log.
 
 ## Notes
 
-- Per-phase task lists are append-only once a phase is `done`. New follow-up work goes onto the active phase's list, not back into a closed phase's list.
-- Specs themselves (`requirements.md`, `design.md`, `README.md`) are the source of truth for *why* a phase happened and *what* it covered. `TASKS.md` is the ordered list of *how* it landed — commit hashes are the source of truth for *when*.
-- If a task turns out to be larger than estimated during implementation, split it in the active phase's `TASKS.md` rather than letting it sprawl.
+- Per-phase task lists are append-only once a phase is folded. New
+  follow-up work goes onto the active phase's list, not back into a
+  folded phase's history.
+- `docs/architecture.md` is the source of truth for *why* the system
+  is shaped the way it is. The git log is the source of truth for
+  *when* and *what* landed.
+- If a task turns out to be larger than estimated during
+  implementation, split it in the active phase's `TASKS.md` rather
+  than letting it sprawl.
