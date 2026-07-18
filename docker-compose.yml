@@ -49,6 +49,15 @@ services:
     image: doc-khoj-app:latest
     ports:
       - "3001:3001"
+    # ponytail: pass the operator-curated .env through to the container
+    # so `setup-oidc` (and other operator tools) write to the file the
+    # running app actually reads. Without this, OIDC_* + APP_BASE_URL +
+    # any other operator-key stays on the host side and the app silently
+    # runs as if those keys weren't set. The explicit environment block
+    # below still wins for keys we want to pin (QDRANT_URL uses the
+    # in-network service name, not localhost).
+    env_file:
+      - .env
     volumes:
       # Persist uploaded files into ~/.dockhoj/documents/. The
       # in-container path /app/documents is what the app's
