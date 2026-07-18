@@ -48,6 +48,18 @@ export function validateUsername(username: string): boolean {
   return USERNAME_RE.test(username);
 }
 
+// Phase 06 / p6-T02 — sentinel for OIDC-provisioned users.
+//
+// why: `users.password_hash` is NOT NULL (Phase 04). SQLite cannot drop
+// a NOT NULL constraint without a table rebuild, which is risky against
+// a live users table. The sentinel — a magic string — sidesteps the
+// rebuild: `verifyPassword(plain, '!oidc!')` returns false because the
+// stored value isn't in the `scrypt$…` format, so the format check
+// rejects it before any comparison. OIDC users structurally cannot
+// password-login by construction. If a future phase wants real nullable
+// hashes, the table rebuild happens then with a clean migration.
+export const OIDC_PASSWORD_SENTINEL = '!oidc!';
+
 export class UserStore {
   constructor(private readonly db: DB) {}
 
@@ -141,6 +153,42 @@ export class UserStore {
       .prepare(`SELECT 1 AS x FROM users WHERE username = ?`)
       .get(username);
     return row !== undefined;
+  }
+
+  // Phase 06 / p6-T02 — insert an OIDC-provisioned user. Skips
+  // hashPassword (the whole point: OIDC users have no password); the
+  // OIDC_PASSWORD_SENTINEL takes its place. The `user_identities` row
+  // added in T01 is the authoritative link; the sentinel just means
+  // "no password."
+  async createOidcUser({ username, role }: { username: string; role: UserRole }): Promise<User> {
+    if (!validateUsername(username)) {
+      throw new Error(`Invalid username: must match ${USERNAME_RE.source}`);
+    }
+    const id = uuidv4();
+    this.db
+      .prepare(
+        `INSERT INTO users (id, username, password_hash, role)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(id, username, OIDC_PASSWORD_SENTINEL, role);
+    const user = this.findById(id);
+    if (!user) {
+      throw new Error('createOidcUser: row vanished after insert');
+    }
+    return user;
+  }
+
+  /** Phase 06 / p6-T02 — recompute-on-login helper. Caller (T06) wants
+   *  "ensure role is X"; this writes only when the role actually differs
+   *  so we don't churn last-modified metadata on every OIDC callback. */
+  updateRoleIfChanged(id: string, role: UserRole): boolean {
+    const row = this.db
+      .prepare(`SELECT role FROM users WHERE id = ?`)
+      .get(id) as { role: string } | undefined;
+    if (!row) return false;
+    if (row.role === role) return false;
+    this.db.prepare(`UPDATE users SET role = ? WHERE id = ?`).run(role, id);
+    return true;
   }
 }
 
