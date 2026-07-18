@@ -14,6 +14,7 @@ import {
 } from '../../src/services/oidc.js';
 import { UserStore } from '../../src/services/user-store.js';
 import { UserIdentityStore } from '../../src/services/user-identity-store.js';
+import { AuthSessionStore } from '../../src/services/auth-session-store.js';
 
 // p6-T06 — /api/auth/oidc/{login,callback} via fastify.inject, real
 // SQLite, real jose crypto, mocked IdP HTTP transport (the network
@@ -93,6 +94,9 @@ async function forgeCallbackInputs(
     audience?: string;
     expiresIn?: string;
     extraClaims?: Record<string, unknown>;
+    /** p7-T02: overrides for the state object (e.g. mode/linkUserId).
+     *  Merged after the defaults so callers can flip mode to 'link'. */
+    stateOverride?: Partial<OidcState>;
   } = {},
 ): Promise<{ stateCookieValue: string; stored: OidcState; idToken: string }> {
   const nonce = options.nonce ?? 'nonce-test';
@@ -102,6 +106,7 @@ async function forgeCallbackInputs(
     verifier: 'verifier-test',
     next: '/chat',
     exp: Date.now() + 5 * 60 * 1000,
+    ...(options.stateOverride ?? {}),
   };
   const stateCookieValue = signState(stateObj, CLIENT_SECRET);
 
@@ -195,6 +200,7 @@ describe('/api/auth/oidc/* routes', () => {
   let db: ReturnType<typeof Database>;
   let users: UserStore;
   let identities: UserIdentityStore;
+  let sessions: AuthSessionStore;
   let km: KeyMaterial;
 
   beforeEach(async () => {
@@ -203,6 +209,7 @@ describe('/api/auth/oidc/* routes', () => {
     migrate(db);
     users = new UserStore(db);
     identities = new UserIdentityStore(db);
+    sessions = new AuthSessionStore(db);
     km = await makeKey();
 
     app = Fastify({ logger: false });
@@ -596,6 +603,202 @@ describe('/api/auth/oidc/* routes', () => {
       expect(res.statusCode).toBe(302);
       expect(res.headers.location).toBe('/upload');
     });
+
+    // ── p7-T02 link-mode ───────────────────────────────────────────────
+
+    /** Helper: forge a link-mode state cookie + id_token for a given
+     *  linkUserId. The id_token sub is the default 'user-sub-1'. */
+    async function forgeLinkInputs(
+      linkUserId: string,
+    ): Promise<{ stateCookieValue: string; idToken: string }> {
+      const { stateCookieValue, idToken } = await forgeCallbackInputs(km, {
+        stateOverride: { mode: 'link', linkUserId, next: '/account?linked=ok' },
+      });
+      return { stateCookieValue, idToken };
+    }
+
+    it('link happy path: binds identity to the password user, redirects to /account?linked=ok, no new sid cookie', async () => {
+      setEnv();
+      const user = await users.createUser({
+        username: 'bob',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      const session = sessions.create(user.id);
+      const { stateCookieValue, idToken } = await forgeLinkInputs(user.id);
+      installFakeIdP(km, idToken);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=auth-code&state=state-test',
+        headers: {
+          cookie: `dockhoj_sid=${session.id}; dockhoj_oidc=${stateCookieValue}`,
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('/account?linked=ok');
+      // Identity row inserted, pointing at the password user.
+      const linked = identities.findUserIdByIssuerSub(ISSUER, 'user-sub-1');
+      expect(linked).toBe(user.id);
+      // findByUserId sees the row.
+      expect(identities.findByUserId(user.id)).toEqual([
+        { issuer: ISSUER, sub: 'user-sub-1' },
+      ]);
+      // State cookie cleared.
+      const setCookie = String(res.headers['set-cookie'] ?? '');
+      expect(setCookie).toMatch(/dockhoj_oidc=; /);
+      // Link mode does NOT set a new session cookie.
+      expect(setCookie).not.toMatch(/dockhoj_sid=/);
+      // No new user provisioned — still just bob.
+      expect(users.listAll()).toHaveLength(1);
+    });
+
+    it('link no session: missing dockhoj_sid → /login?oidc_error=link_session, no identity row', async () => {
+      setEnv();
+      const user = await users.createUser({
+        username: 'bob',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      const { stateCookieValue, idToken } = await forgeLinkInputs(user.id);
+      installFakeIdP(km, idToken);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=auth-code&state=state-test',
+        headers: { cookie: `dockhoj_oidc=${stateCookieValue}` },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('/login?oidc_error=link_session');
+      expect(identities.findByUserId(user.id)).toEqual([]);
+    });
+
+    it('link session mismatch: dockhoj_sid for a different user → /login?oidc_error=link_session', async () => {
+      setEnv();
+      const userA = await users.createUser({
+        username: 'alice',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      const userB = await users.createUser({
+        username: 'bob',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      const sessionB = sessions.create(userB.id); // logged in as B
+      const { stateCookieValue, idToken } = await forgeLinkInputs(userA.id); // but linking A
+      installFakeIdP(km, idToken);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=auth-code&state=state-test',
+        headers: {
+          cookie: `dockhoj_sid=${sessionB.id}; dockhoj_oidc=${stateCookieValue}`,
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('/login?oidc_error=link_session');
+      expect(identities.findByUserId(userA.id)).toEqual([]);
+    });
+
+    it('link already: user has an identity row → /login?oidc_error=link_already', async () => {
+      setEnv();
+      const user = await users.createUser({
+        username: 'bob',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      // Pre-link via the store, simulating a previous successful link.
+      identities.link(user.id, ISSUER, 'some-other-sub');
+      const session = sessions.create(user.id);
+      const { stateCookieValue, idToken } = await forgeLinkInputs(user.id);
+      installFakeIdP(km, idToken);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=auth-code&state=state-test',
+        headers: {
+          cookie: `dockhoj_sid=${session.id}; dockhoj_oidc=${stateCookieValue}`,
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('/login?oidc_error=link_already');
+      // Only the pre-existing row; nothing new inserted.
+      expect(identities.findByUserId(user.id)).toEqual([
+        { issuer: ISSUER, sub: 'some-other-sub' },
+      ]);
+    });
+
+    it('link conflict: (issuer, sub) already belongs to a different user → /login?oidc_error=link_conflict', async () => {
+      setEnv();
+      const userA = await users.createUser({
+        username: 'alice',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      const userB = await users.createUser({
+        username: 'bob',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      // B already owns (issuer, 'user-sub-1').
+      identities.link(userB.id, ISSUER, 'user-sub-1');
+      const sessionA = sessions.create(userA.id);
+      // A tries to link the SAME (issuer, sub). The findByUserId(A)
+      // gate passes (A has no rows), so we reach identities.link →
+      // UNIQUE throw → catch sees racerUserId=B ≠ A → link_conflict.
+      const { stateCookieValue, idToken } = await forgeLinkInputs(userA.id);
+      installFakeIdP(km, idToken);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=auth-code&state=state-test',
+        headers: {
+          cookie: `dockhoj_sid=${sessionA.id}; dockhoj_oidc=${stateCookieValue}`,
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('/login?oidc_error=link_conflict');
+      // A still has no identity; B keeps the row.
+      expect(identities.findByUserId(userA.id)).toEqual([]);
+      expect(identities.findUserIdByIssuerSub(ISSUER, 'user-sub-1')).toBe(userB.id);
+    });
+
+    it('link group denial: id_token groups fail the gate → /login?oidc_error=denied (gate runs before link branch)', async () => {
+      setEnv({ OIDC_ALLOWED_GROUP: 'dockhoj-users' });
+      const user = await users.createUser({
+        username: 'bob',
+        password: 'pw-good-12345',
+        role: 'user',
+      });
+      const session = sessions.create(user.id);
+      const { stateCookieValue, idToken } = await forgeCallbackInputs(km, {
+        stateOverride: { mode: 'link', linkUserId: user.id },
+        extraClaims: { groups: ['some-other-group'] },
+      });
+      installFakeIdP(km, idToken);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/oidc/callback?code=auth-code&state=state-test',
+        headers: {
+          cookie: `dockhoj_sid=${session.id}; dockhoj_oidc=${stateCookieValue}`,
+        },
+      });
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('/login?oidc_error=denied');
+      expect(identities.findByUserId(user.id)).toEqual([]);
+    });
+
+    // p7-T02 race-catch note: the same-user UNIQUE-constraint catch path
+    // (where racerUserId === linkUserId → /account?linked=ok) is covered
+    // by code review. It's genuinely awkward to exercise in this test
+    // harness: the findByUserId gate at the top of the link branch
+    // short-circuits to link_already before identities.link can throw,
+    // and simulating two truly concurrent callbacks in fastify.inject
+    // isn't possible. The conflict test above covers the other-user
+    // branch of the catch; the same-user branch differs only in the
+    // redirect target.
   });
 
   // ── createLocalJWKSet reuse sanity ─────────────────────────────────

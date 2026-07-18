@@ -28,6 +28,17 @@ export class UserIdentityStore {
     return row?.user_id ?? null;
   }
 
+  /** Returns every identity row linked to a local user. p7-T02: used by
+   *  the OIDC callback's link-mode branch to short-circuit a re-link
+   *  attempt (`?oidc_error=link_already`). Empty array means the user
+   *  has no SSO identity yet and the link may proceed. */
+  findByUserId(userId: string): { issuer: string; sub: string }[] {
+    const rows = this.db
+      .prepare(`SELECT issuer, sub FROM user_identities WHERE user_id = ?`)
+      .all(userId) as { issuer: string; sub: string }[];
+    return rows;
+  }
+
   /** Records that (issuer, sub) maps to the given local user. First
    *  write only — does not bump last_seen_at on conflict (UNIQUE on
    *  (issuer, sub) means a second link() for the same pair throws).

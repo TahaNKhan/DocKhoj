@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
 import type Database from 'better-sqlite3';
-import { setSessionCookieHeader } from '../services/cookies.js';
+import { COOKIE_NAME, setSessionCookieHeader } from '../services/cookies.js';
 import {
   loadOidcConfig,
   getDiscovery,
@@ -172,6 +172,24 @@ function readOidcStateCookie(cookieHeader: string | undefined): string | null {
   return null;
 }
 
+/**
+ * p7-T02: read the session-cookie sid from the Cookie header. Mirrors
+ * readOidcStateCookie — same hand-parse, different cookie name. Used only
+ * by the link-mode branch to confirm the caller is already authenticated
+ * as the user the state cookie intends to bind the identity to.
+ */
+function readSessionSid(cookieHeader: string | undefined): string | null {
+  if (!cookieHeader) return null;
+  for (const part of cookieHeader.split(';')) {
+    const [name, ...rest] = part.trim().split('=');
+    if (name === COOKIE_NAME) {
+      const v = rest.join('=').trim();
+      return v || null;
+    }
+  }
+  return null;
+}
+
 export const oidcAuthRoutes: FastifyPluginAsync = async (fastify: FastifyInstance) => {
   const db = (fastify as unknown as { db: DB }).db;
   const users = new UserStore(db);
@@ -290,6 +308,76 @@ export const oidcAuthRoutes: FastifyPluginAsync = async (fastify: FastifyInstanc
         // user might be a legitimate member of a different group; the
         // operator fixes OIDC_ALLOWED_GROUP and they retry.
         return reply.redirect('/login?oidc_error=denied');
+      }
+
+      // p7-T02: link-mode branch. The state cookie asked us to bind this
+      // (issuer, sub) to an already-authenticated password user instead
+      // of running find-or-create. Branches BEFORE the login-mode path;
+      // login-mode is structurally unchanged. The group gate above runs
+      // for BOTH modes — a denied user in link mode is still denied.
+      if (stored.mode === 'link' && stored.linkUserId) {
+        const linkUserId = stored.linkUserId;
+
+        // The caller must already hold a session for exactly the user
+        // the state cookie names. A missing cookie, no session, or a
+        // session for a different user is treated as link_session —
+        // the SPA renders "sign in failed" and the user retries.
+        const sid = readSessionSid(request.headers.cookie);
+        const session = sid ? sessions.findById(sid) : null;
+        if (!session || session.userId !== linkUserId) {
+          log.warn(
+            { event: 'oidc_link_session_missing', linkUserId, hasSid: !!sid },
+            'OIDC link-mode callback without matching session',
+          );
+          return reply.redirect('/login?oidc_error=link_session');
+        }
+
+        // Already linked? The link page should have hidden the button,
+        // but a stale tab or a replayed state cookie can still get here.
+        if (identities.findByUserId(linkUserId).length > 0) {
+          log.info(
+            { event: 'oidc_link_already', linkUserId },
+            'OIDC link-mode callback for user with existing identity',
+          );
+          return reply.redirect('/login?oidc_error=link_already');
+        }
+
+        // Race-safe insert: two concurrent callbacks for the same
+        // (issuer, sub) can both pass the findByUserId gate. The UNIQUE
+        // constraint on (issuer, sub) is the actual invariant; we catch
+        // and reconcile. Same-user race → success (the identity is
+        // linked to this user, just by the other callback). Different-
+        // user race → link_conflict (the IdP gave two local users the
+        // same sub; not something we can recover from here).
+        try {
+          identities.link(linkUserId, cfg.issuer, String(payload.sub));
+        } catch (e) {
+          if (isUniqueConstraintError(e)) {
+            const racerUserId = identities.findUserIdByIssuerSub(cfg.issuer, String(payload.sub));
+            if (racerUserId === linkUserId) {
+              // Same-user race — the identity is linked to this user.
+              return reply.redirect('/account?linked=ok');
+            }
+            if (racerUserId) {
+              log.warn(
+                { event: 'oidc_link_conflict', linkUserId, racerUserId, issuer: cfg.issuer, sub: payload.sub },
+                'OIDC link-mode callback: identity already belongs to another user',
+              );
+              return reply.redirect('/login?oidc_error=link_conflict');
+            }
+          }
+          throw e;
+        }
+
+        log.info(
+          { event: 'oidc_linked', userId: linkUserId, issuer: cfg.issuer, sub: payload.sub },
+          'OIDC identity linked to existing user',
+        );
+        // No sessions.create, no setSessionCookieHeader — the user
+        // already has a session (we verified it above). The state
+        // cookie was cleared earlier in the callback; that's the only
+        // Set-Cookie we emit in link mode.
+        return reply.redirect('/account?linked=ok');
       }
 
       // Provision + create session.
