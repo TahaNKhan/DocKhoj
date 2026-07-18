@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createLocalJWKSet,
+  exportJWK,
   generateKeyPair,
   type JWK,
   SignJWT,
@@ -20,13 +21,16 @@ const ISSUER = 'https://idp.example.com';
 const AUDIENCE = 'dockhoj-client';
 
 interface KeyMaterial {
-  privateKey: CryptoKey;
+  // ponytail: jose's generateKeyPair returns KeyObject in Node and
+  // CryptoKey in browsers; exportJWK handles both. crypto.subtle.exportKey
+  // throws on a Node KeyObject — we hit that here before this fix.
+  privateKey: CryptoKey | Uint8Array;
   publicJwk: JWK;
 }
 
 async function makeKey(): Promise<KeyMaterial> {
   const { privateKey, publicKey } = await generateKeyPair('RS256', { extractable: true });
-  const jwk = await crypto.subtle.exportKey('jwk', publicKey);
+  const jwk = await exportJWK(publicKey);
   return {
     privateKey: privateKey as unknown as CryptoKey,
     publicJwk: { ...jwk, kid: 'test-kid-1', alg: 'RS256', use: 'sig' },
@@ -50,8 +54,13 @@ async function mintToken(
     groups: ['users'],
     preferred_username: 'alice',
     ...(overrides.extraClaims ?? {}),
+    // ponytail: include nonce in the constructor's claims object — the
+    // SignJWT copies them at construction time, so a later `claims.nonce =`
+    // has no effect. Earlier version did the assignment after `new SignJWT`
+    // and the verify step rejected the token for "OIDC nonce mismatch".
+    ...(overrides.nonce !== undefined ? { nonce: overrides.nonce } : {}),
   };
-  let jwt = new SignJWT(claims)
+  const jwt = new SignJWT(claims)
     .setProtectedHeader({ alg: 'RS256', kid: 'test-kid-1' })
     .setIssuer(overrides.issuer ?? ISSUER)
     .setAudience(overrides.audience ?? AUDIENCE)
@@ -59,18 +68,19 @@ async function mintToken(
     .setExpirationTime(overrides.expiresIn ?? '5m')
     .setSubject('user-sub-1')
     .setJti(`jti-${now}`);
-  if (overrides.nonce !== undefined) {
-    jwt = jwt.setProtectedHeader({ alg: 'RS256', kid: 'test-kid-1' });
-    claims.nonce = overrides.nonce;
-  }
   let token = await jwt.sign(km.privateKey);
 
   if (overrides.tamper === 'sig') {
-    // Flip the last char of the signature segment.
+    // ponytail: flipping the last base64url char is often a no-op — the
+    // last 2 bits of the final char are padding bits ignored on decode.
+    // Decode to bytes, flip a real byte, re-encode. This guarantees the
+    // decoded signature changes. (~1-in-2^8 chance the flipped byte
+    // happens to be the byte jose ignores, but that's vanishing.)
     const segs = token.split('.');
-    const sig = segs[2] ?? '';
-    const flipped = sig.slice(0, -1) + (sig.endsWith('A') ? 'B' : 'A');
-    token = `${segs[0]}.${segs[1]}.${flipped}`;
+    const sigB64 = segs[2] ?? '';
+    const sigBytes = Buffer.from(sigB64, 'base64url');
+    sigBytes[0] = (sigBytes[0]! ^ 0x01) & 0xff;
+    token = `${segs[0]}.${segs[1]}.${sigBytes.toString('base64url')}`;
   }
   return token;
 }

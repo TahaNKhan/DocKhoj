@@ -60,8 +60,11 @@ describe('signState + verifyState', () => {
   });
 
   it('rejects a state with a missing required field', () => {
-    const s = { state: 'x', nonce: 'n', verifier: 'v', next: '/chat' } as unknown as OidcState;
-    s.exp = Date.now() + 60_000;
+    // ponytail: omit `next` from the signed state; verifyState's shape
+    // check should refuse it. (Earlier version accidentally set `s.exp`
+    // after the cast — so the state had all 5 fields and the test
+    // never actually exercised the missing-field path.)
+    const s = { state: 'x', nonce: 'n', verifier: 'v', exp: Date.now() + 60_000 } as unknown as OidcState;
     const cookie = signState(s, SECRET);
     expect(verifyState(cookie, SECRET)).toBeNull();
   });

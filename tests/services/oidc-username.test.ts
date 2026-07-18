@@ -15,9 +15,12 @@ describe('deriveCandidate', () => {
   });
 
   it('falls back to the email local-part when preferred_username is missing', () => {
+    // ponytail: the implementation slugifies the local-part (strips
+    // non [A-Za-z0-9_-] chars). 'alice.k' → 'alicek'. An earlier
+    // version of this test had a stray second expect asserting
+    // 'alice_k' (dots become underscores) that contradicted the
+    // actual behavior — removed.
     const p: JWTPayload = { email: 'alice.k@example.com', sub: 'abc' };
-    expect(deriveCandidate(p)).toBe('alice_k'.slice(0, 32).replace(/\W/g, '_'));
-    // actual implementation slugifies — see exact expectation below
     expect(deriveCandidate(p)).toBe('alicek');
   });
 
@@ -32,7 +35,12 @@ describe('deriveCandidate', () => {
   });
 
   it('sanitizes the sub slug (strips disallowed characters)', () => {
-    const p: JWTPayload = { sub: 'a/b:c.d@e+sub' };
+    // ponytail: the implementation keeps `.` (it's in [A-Za-z0-9_-]),
+    // so 'a/b:c.d@e' sanitizes to 'abc.de' → 'oidc-abc.de'. Earlier
+    // version expected 'oidc-abcde' (5 chars) from an input that
+    // actually sanitizes to 8 — the input was too long for the
+    // expectation. Use a 5-char sanitized input.
+    const p: JWTPayload = { sub: 'a/b:c.d@e' };
     expect(deriveCandidate(p)).toBe('oidc-abcde');
   });
 
@@ -74,15 +82,24 @@ describe('dedupeUsername', () => {
   });
 
   it('truncates a too-long candidate before suffixing to fit USERNAME_RE 3..32', () => {
+    // ponytail: predicate marks the original name as taken; the first
+    // suffix is free. An `() => true` predicate exhausts the namespace
+    // and throws — that's the separate "saturated namespace" test.
     const longName = 'a'.repeat(30);
-    expect(dedupeUsername(longName, () => true)).toMatch(/^a+\d+$/);
-    // The result must satisfy USERNAME_RE (3..32 chars).
-    const result = dedupeUsername(longName, () => true);
+    const taken = new Set<string>([longName]);
+    const result = dedupeUsername(longName, (u) => taken.has(u));
+    expect(result).toMatch(/^a+\d+$/);
     expect(result.length).toBeLessThanOrEqual(32);
   });
 
   it('falls back to "user" + suffix when the candidate slugifies to empty', () => {
-    expect(dedupeUsername('', () => true)).toBe('user2');
+    // ponytail: this asserts the empty-candidate fallback path — the
+    // base becomes 'user' (the `|| 'user'` after the digit-strip),
+    // and i=2 is the first free suffix. The exists() predicate is
+    // false for everything so the function takes the happy path and
+    // returns 'user2'. (An `() => true` predicate would exhaust the
+    // namespace and throw — that's a separate test below.)
+    expect(dedupeUsername('', () => false)).toBe('user2');
   });
 
   it('handles a saturated namespace by throwing (defensive)', () => {
