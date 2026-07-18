@@ -220,14 +220,28 @@ describe('/api/auth/* routes', () => {
     it('on an empty users table → 200 + firstUserAvailable=true', async () => {
       const res = await app.inject({ method: 'GET', url: '/api/auth/status' });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ firstUserAvailable: true });
+      // p6-T07 — /status now also returns the `oidc` field (FR-19). The
+      // additive shape is documented; we use `objectContaining` so this
+      // test doesn't need to change every time a new top-level field
+      // lands.
+      expect(res.json()).toEqual(expect.objectContaining({ firstUserAvailable: true }));
     });
 
     it('after a user exists → 200 + firstUserAvailable=false', async () => {
       await users.createUser({ username: 'alice', password: 'correcthorse123!', role: 'admin' });
       const res = await app.inject({ method: 'GET', url: '/api/auth/status' });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ firstUserAvailable: false });
+      expect(res.json()).toEqual(expect.objectContaining({ firstUserAvailable: false }));
+    });
+
+    it('includes the oidc field (p6-T07: enabled=false when OIDC is not configured)', async () => {
+      const res = await app.inject({ method: 'GET', url: '/api/auth/status' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual(
+        expect.objectContaining({
+          oidc: { enabled: false, providerName: '' },
+        }),
+      );
     });
 
     it('does not require auth (no cookie needed)', async () => {
