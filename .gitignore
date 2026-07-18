@@ -1,6 +1,7 @@
 .env
 node_modules
 dist
+.agent-state.json
 documents
 qdrant_data
 qdrant_storage

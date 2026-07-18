@@ -302,5 +302,12 @@ burns down in parallel with the trivial SPA chain.
   same commit that implements it, per global CLAUDE.md §9.
 
 <!-- Status block — keep in sync with per-task checkboxes above. -->
-- T01 `[ ]` · T02 `[ ]` · T03 `[ ]` · T04 `[ ]` · T05 `[ ]` · T06 `[ ]`
-- T07 `[ ]` · T08 `[ ]` · T09 `[ ]` · T11 `[ ]` · T12 `[ ]` · T13 `[ ]` · T14 `[ ]`
+- T01 `[x]` · T02 `[ ]` · T03 `[x]` · T04 `[x]` · T05 `[ ]` · T06 `[ ]`
+- T07 `[ ]` · T08 `[ ]` · T09 `[ ]` · T11 `[x]` · T12 `[ ]` · T13 `[ ]` · T14 `[ ]`
+
+## Gate log
+
+- **Gate 0** (done 2026-07-18): T01, T03, T04, T11 merged into main.
+  579 passed / 7 skipped (+16 tests); the 21 web/happy-dom errors are a
+  pre-existing worktree-bootstrap gap, present on main before phase-06.
+  Worktrees cleaned up.
