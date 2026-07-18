@@ -79,6 +79,14 @@ export function UserMenu() {
       </button>
       {open && (
         <div class="user-menu-pop" role="menu">
+          <Link
+            href="/account"
+            class="user-menu-item"
+            role="menuitem"
+            onClick={() => setOpen(false)}
+          >
+            Account
+          </Link>
           {isAdmin && (
             <>
               <Link

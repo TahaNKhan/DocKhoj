@@ -129,7 +129,7 @@ describe('UserMenu (p4-T17)', () => {
     expect(container.querySelector('.user-menu-pop')).toBeNull();
   });
 
-  it('admin sees both admin links; non-admin sees neither', async () => {
+  it('admin sees Account + both admin links; non-admin sees only Account', async () => {
     const admin = renderMenu({
       user: { id: 'a1', username: 'root', role: 'admin' },
     });
@@ -137,11 +137,13 @@ describe('UserMenu (p4-T17)', () => {
     fireEvent.click(admin.container.querySelector('.user-menu-chip')!);
     const adminPop = admin.container.querySelector('.user-menu-pop')!;
     const adminLinks = adminPop.querySelectorAll('a.user-menu-item');
-    expect(adminLinks).toHaveLength(2);
-    expect(adminLinks[0]!.getAttribute('href')).toBe('/admin/users');
-    expect(adminLinks[1]!.getAttribute('href')).toBe('/admin/invites');
-    expect(adminLinks[0]!.textContent).toContain('Admin → Users');
-    expect(adminLinks[1]!.textContent).toContain('Admin → Invites');
+    expect(adminLinks).toHaveLength(3);
+    expect(adminLinks[0]!.getAttribute('href')).toBe('/account');
+    expect(adminLinks[0]!.textContent).toContain('Account');
+    expect(adminLinks[1]!.getAttribute('href')).toBe('/admin/users');
+    expect(adminLinks[2]!.getAttribute('href')).toBe('/admin/invites');
+    expect(adminLinks[1]!.textContent).toContain('Admin → Users');
+    expect(adminLinks[2]!.textContent).toContain('Admin → Invites');
     cleanup();
 
     const user = renderMenu({
@@ -150,7 +152,10 @@ describe('UserMenu (p4-T17)', () => {
     await waitForChip(user.container, 'bob');
     fireEvent.click(user.container.querySelector('.user-menu-chip')!);
     const userPop = user.container.querySelector('.user-menu-pop')!;
-    expect(userPop.querySelectorAll('a.user-menu-item')).toHaveLength(0);
+    const userLinks = userPop.querySelectorAll('a.user-menu-item');
+    expect(userLinks).toHaveLength(1);
+    expect(userLinks[0]!.getAttribute('href')).toBe('/account');
+    expect(userLinks[0]!.textContent).toContain('Account');
     expect(userPop.querySelectorAll('.user-menu-logout')).toHaveLength(1);
   });
 

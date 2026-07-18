@@ -10,6 +10,7 @@ import { Register } from './routes/Register';
 import { InviteAccept } from './routes/InviteAccept';
 import { AdminUsers } from './routes/AdminUsers';
 import { AdminInvites } from './routes/AdminInvites';
+import { Account } from './routes/Account';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import {
   listSessions,
@@ -392,6 +393,11 @@ export function Chrome() {
           <Route path="/admin/invites">
             <RouteGuard requireRole="admin">
               <AdminInvites />
+            </RouteGuard>
+          </Route>
+          <Route path="/account">
+            <RouteGuard>
+              <Account />
             </RouteGuard>
           </Route>
         </Switch>
