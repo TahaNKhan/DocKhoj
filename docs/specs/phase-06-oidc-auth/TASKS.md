@@ -303,7 +303,7 @@ burns down in parallel with the trivial SPA chain.
 
 <!-- Status block — keep in sync with per-task checkboxes above. -->
 - T01 `[x]` · T02 `[x]` · T03 `[x]` · T04 `[x]` · T05 `[x]` · T06 `[x]`
-- T07 `[x]` · T08 `[ ]` · T09 `[ ]` · T11 `[x]` · T12 `[x]` · T13 `[x]` · T14 `[ ]`
+- T07 `[x]` · T08 `[x]` · T09 `[x]` · T11 `[x]` · T12 `[x]` · T13 `[x]` · T14 `[x]`
 
 ## Gate log
 
@@ -337,3 +337,50 @@ burns down in parallel with the trivial SPA chain.
   ./restart.sh + curl: OIDC routes registered; /login → 503 JSON when
   OIDC off; /callback → 302 /login?oidc_error=config when OIDC off;
   existing auth routes unchanged.
+
+- **Gate 3** (done 2026-07-18): T08 + T09 merged into main. SPA
+  reads the additive `oidc` field from `/api/auth/status` and renders
+  a "Sign in with <Provider>" button when enabled. The button is a
+  full-nav anchor (preserves middle-click / cmd-click semantics). A
+  `?oidc_error=<code>` query on `/login` renders an inline error with
+  a per-code message map. 11 new tests in `web/tests/routes/Login.test.tsx`.
+  Fix the SPA test bootstrap gap along the way: happy-dom was missing
+  from root node_modules, which made the 'web' vitest project fail to
+  import it. Moved from `dependencies` to `devDependencies` (it's test-
+  only). 872 passed / 7 skipped on main (zero errors).
+
+- **Gate 4 / T14** (done 2026-07-18): `./restart.sh` + curl walkthrough
+  on main with OIDC disabled (default `.env`). All checks green:
+
+  ```text
+  /api/health                         → 200 {"status":"ok","ollama":<bool>}
+  /api/auth/status                    → 200 {"firstUserAvailable":<bool>,"oidc":{"enabled":false,"providerName":""}}
+  /api/auth/oidc/login (OIDC off)     → 503 {"error":"OIDC not configured"}
+  /api/auth/oidc/callback?code=&state=→ 302 /login?oidc_error=config
+  /chat, /upload (SPA)                → 200 text/html
+  /api/does-not-exist                 → 401 JSON (auth gate)
+  /api/auth/login bad creds           → 401 JSON (no regression)
+  ```
+
+  872 passed / 7 skipped in `npm test -- --run` (no `.skip` introduced
+  this phase). Phase-06 is shippable as-is.
+
+  **Manual IdP walkthrough (operator-driven; not automatable in CI).**
+  When the operator is ready to wire a real IdP, the steps are:
+
+  1. `docker compose stop app` (so a future `./restart.sh` picks up new
+     env without restarting mid-flow).
+  2. `npm run setup-oidc` — the 4-step interactive script (T12).
+     For scripted setups, pass `--base-url`, `--discovery-url`,
+     `--client-id`, `--client-secret`, `--allowed-group`,
+     `--admin-group`, `--non-interactive`. Idempotent on re-run.
+  3. `./restart.sh`.
+  4. Visit `https://<base>/login` — confirm "Sign in with <Provider>"
+     button appears.
+  5. Click the button → land at the IdP's authorization page.
+     Authenticate → land back at `/chat` (or `?next=`) with a valid
+     `dockhoj_sid` cookie. `curl /api/auth/me` confirms the new user.
+  6. Confirm: re-login via SSO after IdP-side group changes recomputes
+     `role` (FR-9). Re-login after IdP-side removal from the allowed
+     group returns `?oidc_error=denied` (FR-8). Tampered state cookie
+     returns `?oidc_error=state`.
