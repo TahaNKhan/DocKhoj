@@ -7,6 +7,7 @@ import { authRoutes } from '../../src/routes/api-auth.js';
 import { UserStore } from '../../src/services/user-store.js';
 import { AuthSessionStore } from '../../src/services/auth-session-store.js';
 import { InviteStore } from '../../src/services/invite-store.js';
+import { UserIdentityStore } from '../../src/services/user-identity-store.js';
 
 // p4-T06 tests — /api/auth/* routes via fastify.inject, with a real
 // SQLite (in-memory) + the real authPlugin so the session/cookie
@@ -197,7 +198,12 @@ describe('/api/auth/* routes', () => {
         headers: { cookie: `dockhoj_sid=${s.id}` },
       });
       expect(res.statusCode).toBe(200);
-      expect(res.json()).toEqual({ id: u.id, username: 'alice', role: 'admin' });
+      expect(res.json()).toEqual({
+        id: u.id,
+        username: 'alice',
+        role: 'admin',
+        linkedMethods: ['password'],
+      });
     });
 
     it('without a cookie → 401', async () => {
@@ -213,6 +219,50 @@ describe('/api/auth/* routes', () => {
         headers: { cookie: 'dockhoj_sid=does-not-exist' },
       });
       expect(res.statusCode).toBe(401);
+    });
+
+    // p7-T04: linkedMethods is computed at request time in the auth
+    // middleware from (a) the password sentinel and (b) the existence
+    // of any user_identities row. Three shapes to cover: password-only,
+    // OIDC-only (sentinel hash), and linked (both).
+    it('password-only user → linkedMethods: ["password"]', async () => {
+      const u = await users.createUser({ username: 'alice', password: 'correcthorse123!', role: 'admin' });
+      const s = sessions.create(u.id);
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { cookie: `dockhoj_sid=${s.id}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().linkedMethods).toEqual(['password']);
+    });
+
+    it('OIDC-provisioned user (sentinel hash + identity row) → linkedMethods: ["oidc"]', async () => {
+      const identities = new UserIdentityStore(db);
+      const u = await users.createOidcUser({ username: 'oidc-alice', role: 'user' });
+      identities.link(u.id, 'https://issuer.example', 'sub-123');
+      const s = sessions.create(u.id);
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { cookie: `dockhoj_sid=${s.id}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().linkedMethods).toEqual(['oidc']);
+    });
+
+    it('linked user (password hash + identity row) → linkedMethods: ["password", "oidc"]', async () => {
+      const identities = new UserIdentityStore(db);
+      const u = await users.createUser({ username: 'alice', password: 'correcthorse123!', role: 'admin' });
+      identities.link(u.id, 'https://issuer.example', 'sub-456');
+      const s = sessions.create(u.id);
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/me',
+        headers: { cookie: `dockhoj_sid=${s.id}` },
+      });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().linkedMethods).toEqual(['password', 'oidc']);
     });
   });
 

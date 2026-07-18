@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import type Database from 'better-sqlite3';
 import { UserStore, validateUsername } from '../services/user-store.js';
+import type { LinkedMethod } from '../services/auth.js';
 import { AuthSessionStore } from '../services/auth-session-store.js';
 import { InviteStore } from '../services/invite-store.js';
 import { verifyPassword } from '../services/password.js';
@@ -32,7 +33,9 @@ function validatePassword(plain: unknown): plain is string {
   return typeof plain === 'string' && plain.length >= 12 && /[^A-Za-z0-9]/.test(plain);
 }
 
-function isUserPayload(x: unknown): x is { id: string; username: string; role: 'admin' | 'user' } {
+function isUserPayload(
+  x: unknown,
+): x is { id: string; username: string; role: 'admin' | 'user'; linkedMethods: LinkedMethod[] } {
   return (
     !!x &&
     typeof x === 'object' &&
