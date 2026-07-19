@@ -21,6 +21,7 @@ import './styles/composer.css';
 import './styles/upload.css';
 import './styles/auth.css';
 import './styles/admin.css';
+import './styles/account.css';
 
 // Listen for OS theme changes when the user hasn't explicitly chosen.
 window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', (e) => {

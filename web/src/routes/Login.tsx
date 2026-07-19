@@ -23,6 +23,12 @@ const OIDC_ERROR_MESSAGES: Record<string, string> = {
   token: 'Sign-in failed. Please try again.',
   denied: 'Your account is not permitted to access DocKhoj. Contact your administrator.',
   config: 'Single sign-on is misconfigured. Contact your administrator.',
+  // p7-T06 — link-mode callback errors (api-auth.ts: /callback when
+  // state.mode === 'link'). link_session fires when the original
+  // session expired before the user came back from the IdP.
+  link_session: 'Your session expired before the link completed. Sign in again and try again.',
+  link_already: 'Single sign-on is already linked to your account.',
+  link_conflict: 'That identity is already linked to another account. Contact your administrator.',
 };
 
 function oidcErrorMessage(code: string | null): string | null {
