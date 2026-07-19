@@ -448,6 +448,110 @@ rationale lives as `// why:` comments in `src/services/oidc.ts` and
 
 ---
 
+## Account linking (Phase 07) — SSO for password users
+
+A password user can bind an OIDC identity to their existing account
+from `/account`. After linking, both login methods work for the same
+user — log in with password, log in via SSO, or either. Unlinking
+reverses it.
+
+```mermaid
+sequenceDiagram
+    participant U as Browser (password user)
+    participant S as Fastify /api/account/link/*
+    participant IdP as OIDC Provider
+    participant DB as SQLite
+    U->>S: POST /api/account/link/sso/start {password}
+    S->>S: verifyPassword (NFR-2 re-auth defense)
+    S->>S: sign state cookie mode='link', linkUserId=user.id
+    S-->>U: { location: '<idp /authorize>' }
+    U->>IdP: authenticate
+    IdP-->>U: 302 → /api/auth/oidc/callback?code=&state=
+    U->>S: GET callback (dockhoj_oidc + dockhoj_sid)
+    S->>S: verify state + id_token + group check
+    S->>S: session.userId === stored.linkUserId? (FR-7)
+    alt session missing or mismatched
+        S-->>U: 302 /login?oidc_error=link_session
+    else user already has an identity
+        S-->>U: 302 /login?oidc_error=link_already
+    else (issuer, sub) belongs to another user
+        S-->>U: 302 /login?oidc_error=link_conflict
+    else success
+        S->>DB: INSERT user_identities (linkUserId, issuer, sub)
+        S-->>U: 302 /account?linked=ok (no new sid cookie)
+    end
+```
+
+Cross-cutting decisions (per-decision rationale lives as `// why:`
+comments at the call sites in `src/services/oidc.ts` and
+`src/routes/api-auth-oidc.ts`):
+
+- **Explicit link from `/account`, not auto-link on first SSO
+  login.** The current `users` table has no email column. Adding
+  one for auto-link matching would cross the YAGNI threshold
+  (a migration + a matching step + a stricter threat-model
+  review). Explicit link is the "Settings → Linked accounts"
+  pattern every consumer SaaS uses; the user re-authenticates
+  their password AND completes the IdP flow, so the binding is
+  provably owned by both.
+
+- **`OidcState.mode` extends the Phase 06 signed state cookie.**
+  Optional field; Phase 06 cookies (no `mode`) decode as
+  `mode='login'` — back-compat is free because `verifyState`
+  coerces the absent field. The HMAC signature covers the
+  full payload, so adding fields doesn't break verify. The
+  callback branches AFTER state verify, token exchange,
+  id_token verify, and group check — a denied user in link
+  mode is still denied.
+
+- **Password re-auth at link/unlink (NFR-2).** Both
+  `/api/account/link/sso/start` and `/api/account/link/sso/unlink`
+  require `verifyPassword(password, user.passwordHash)`. A
+  stolen browser session without the password cannot bind or
+  unbind SSO. Sentinel-hash (OIDC-only) users get 400, not 401,
+  on both endpoints — "wrong password" is misleading when
+  there's no password to be wrong about.
+
+- **Session match at link callback (FR-7).** The callback
+  requires the `dockhoj_sid` cookie's `user_id` to equal the
+  state cookie's `linkUserId`. Without this check, an attacker
+  who could trick the victim into starting a link flow could
+  redirect the IdP callback to bind the identity to any
+  (issuer, sub) they controlled. The state cookie is HttpOnly
+  + SameSite=Lax + HMAC-signed, so `linkUserId` is
+  tamper-proof; the session check is the second layer.
+
+- **Race-safe insert via the `(issuer, sub)` UNIQUE.**
+  Two concurrent callbacks for the same `(issuer, sub)` race
+  past the `findByUserId` gate; the UNIQUE constraint on
+  `identities.link()` catches the second one. Same-user race
+  → success (the identity is linked to this user, just by the
+  other callback). Different-user race → `?oidc_error=
+  link_conflict` (the IdP gave two local users the same `sub`;
+  not recoverable here).
+
+- **`linkedMethods` is computed, not stored.** `/api/auth/me`
+  computes `['password', 'oidc']` per-request from
+  `password_hash` (sentinel check) + one indexed `SELECT 1`
+  on `user_identities`. Single source of truth (the actual
+  data), zero migration, trivial cost (PK lookup on the
+  `user_id` index). The Phase 04 `users` and the Phase 06
+  `user_identities` schemas are sufficient.
+
+- **No "Change password" form on `/account`.** The page is
+  JUST profile + linked accounts. Admin password reset (Phase 04)
+  covers the password-change need; a SPA-only password-change
+  endpoint is a separate workstream if ever requested.
+
+- **Idempotent unlink.** `unlinkAllForUser(userId)` deletes
+  every identity row for the user in a single transaction,
+  regardless of how many `(issuer, sub)` rows accumulated
+  (e.g., IdP changed `sub` over time). No per-row UI to
+  pick a single identity — at most one IdP per install, so
+  multi-row cleanup isn't a real concern today.
+
+---
+
 ## Phase history
 
 The per-phase spec folders were folded into this document when each
@@ -463,6 +567,7 @@ history. Phases in order:
 | 04 | Multi-user accounts (cookie sessions, scrypt, first-user-admin, invite signup); `users`/`auth_sessions`/`invites` tables; per-document + per-chunk `ownerId`/`visibility`; visibility filter on every Qdrant path; 404-for-foreign privacy; admin routes. | `p4-T01…T21` |
 | 05 | Hybrid search: `searchText` payload field + Qdrant full-text `text` index + backfill migration; `searchChunks` rewrite to Qdrant-native RRF over dense + lexical prefetches; visibility filter centralized at the fused top-level. | `p5-T01…T03` |
 | 06 | Additive OIDC SSO (any compliant IdP): `/api/auth/oidc/{login,callback}`, `user_identities` find-or-create by `(issuer, sub)`, sentinel password hash for OIDC-provisioned users, stateless HMAC-signed state cookie, JWT verification via `jose`, `npm run setup-oidc` interactive IdP wiring, SPA SSO button + `?oidc_error` mapping. Disabled by default; password flow unchanged. | `p6-T01…T13` |
+| 07 | Account linking — password users can bind an OIDC identity to their existing user from `/account`. `OidcState` gains optional `mode='link'` + `linkUserId`; OIDC callback branches on `mode`. `/api/account/link/{status,sso/start,sso/unlink}` with password re-auth defense (NFR-2) and session-match at link callback (FR-7). `/api/auth/me` adds `linkedMethods` so the SPA paints without a second round-trip. Race-safe `(issuer, sub)` UNIQUE constraint handles concurrent callbacks. | `p7-T01…T08` |
 
 The currently-active phase, if any, owns its own `TASKS.md` inside a
 fresh `docs/specs/phase-NN-name/` folder (per-phase, not centralized).

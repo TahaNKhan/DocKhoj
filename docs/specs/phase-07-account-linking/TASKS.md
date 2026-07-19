@@ -339,7 +339,7 @@ Document each step's actual output in the fold-in commit body.
 
 **Estimate:** S.
 
-**Status:** todo.
+**Status:** done.
 
 ---
 
