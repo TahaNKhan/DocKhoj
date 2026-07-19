@@ -235,7 +235,7 @@ navigate to a missing page for one commit; safer to keep the ordering.
 
 **Estimate:** XS.
 
-**Status:** todo.
+**Status:** done.
 
 ---
 
@@ -290,7 +290,7 @@ at `/account`).
 
 **Estimate:** M.
 
-**Status:** todo.
+**Status:** done.
 
 ---
 
