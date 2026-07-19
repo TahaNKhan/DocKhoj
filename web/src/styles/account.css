@@ -1,0 +1,161 @@
+/* p7-T06 — Account page. Sibling to .upload-page: same scroll
+   wrapper + centered shell. Panels are surface cards; banner/error
+   shapes borrow from .token-banner / .admin-error. Reuses
+   .doc-action + .role-badge from admin.css so we don't duplicate
+   button/role styles. */
+
+.account-page {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-y: auto;
+  position: relative;
+  z-index: 2;
+}
+
+.account-shell {
+  width: 100%;
+  max-width: 1080px;
+  padding: 56px var(--pad) 96px;
+}
+
+.account-panel {
+  margin-top: 32px;
+  padding: 28px 32px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+}
+
+.account-panel h2 {
+  font-family: var(--f-display);
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--cream);
+  margin-bottom: 18px;
+  letter-spacing: -0.01em;
+}
+
+.account-dl {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 10px 24px;
+  margin: 0;
+}
+
+.account-dl dt {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--muted);
+  align-self: center;
+}
+
+.account-dl dd {
+  margin: 0;
+  color: var(--fg);
+  font-size: 15px;
+}
+
+.account-list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 8px;
+}
+
+.account-list li {
+  padding: 10px 0;
+  font-size: 14px;
+  color: var(--fg);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-list li:last-child {
+  border-bottom: 0;
+}
+
+.account-list li strong {
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  min-width: 160px;
+}
+
+.account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.account-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--f-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.account-form input {
+  font-family: var(--f-body);
+  font-size: 15px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--fg);
+  padding: 12px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  outline: 0;
+  transition: 0.18s;
+}
+
+.account-form input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.account-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Success banner — same shape as .token-banner but a calmer
+   gold-tone palette (mirrors .role-badge.role-admin). */
+.account-banner {
+  padding: 16px 22px;
+  margin-bottom: 24px;
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, rgba(216, 183, 107, 0.10), rgba(216, 183, 107, 0.04));
+  border: 1px solid rgba(216, 183, 107, 0.40);
+  color: var(--cream);
+  font-size: 14px;
+  animation: rise 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* Inline error — same shape as .admin-error inline. */
+.account-error {
+  padding: 12px 16px;
+  border-radius: var(--r);
+  background: rgba(226, 85, 64, 0.12);
+  border: 1px solid rgba(226, 85, 64, 0.35);
+  color: var(--cream);
+  font-size: 13px;
+  margin: 16px 0;
+}
